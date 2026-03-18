@@ -17,38 +17,33 @@ const MOCK_MESSAGES: ChatMessage[] = [
   { id: "m3", username: "goldmember", text: "On my way to make payment now 💪", time: "09:00 AM" },
 ];
 
+const initSlots = () =>
+  Array.from({ length: 100 }, (_, i) => ({
+    id: i + 1,
+    status: (
+      i === 4 ? "mine" :
+      i < 67 ? "taken" :
+      i === 70 || i === 71 ? "locked" :
+      "available"
+    ) as "available" | "taken" | "locked" | "mine",
+  }));
+
 export default function GroupDetail() {
   const { id } = useParams<{ id: string }>();
   const { groups, isLoggedIn, currentUser } = useApp();
-  const group = groups.find(g => g.id === id);
-  if (!group) return <Navigate to="/groups" replace />;
 
-  const [slots, setSlots] = useState(() =>
-    Array.from({ length: 100 }, (_, i) => ({
-      id: i + 1,
-      status: i < 67 ? (Math.random() > 0.8 ? "taken" : "taken") : "available" as "available" | "taken" | "locked" | "mine",
-    })).map((s, i) => ({
-      ...s,
-      status: (
-        i === 4 ? "mine" :
-        i < 30 ? "taken" :
-        i >= 30 && i < 67 ? "taken" :
-        i === 70 || i === 71 ? "locked" :
-        "available"
-      ) as "available" | "taken" | "locked" | "mine"
-    }))
-  );
-
+  const [slots, setSlots] = useState(initSlots);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [showTerms, setShowTerms] = useState(false);
-  const [showPayment, setShowPayment] = useState(false);
-  const [paymentTime, setPaymentTime] = useState("08:00 PM");
+  const [paymentTime, setPaymentTime] = useState("20:00");
   const [chatMsg, setChatMsg] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
   const [countdown, setCountdown] = useState({ h: 0, m: 0, s: 0 });
   const [payProof, setPayProof] = useState(false);
   const [payDone, setPayDone] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
+
+  const group = groups.find(g => g.id === id);
 
   // Countdown timer
   useEffect(() => {
@@ -67,6 +62,8 @@ export default function GroupDetail() {
     return () => clearInterval(iv);
   }, []);
 
+  if (!group) return <Navigate to="/groups" replace />;
+
   const handleSlotClick = (slotId: number, status: string) => {
     if (!isLoggedIn) return;
     if (status === "taken" || status === "locked" || status === "mine") return;
@@ -82,12 +79,13 @@ export default function GroupDetail() {
 
   const sendMsg = () => {
     if (!chatMsg.trim() || !currentUser) return;
-    setMessages(prev => [...prev, {
+    const newMsg: ChatMessage = {
       id: Date.now().toString(),
       username: currentUser.username,
       text: chatMsg,
       time: new Date().toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }),
-    }]);
+    };
+    setMessages(prev => [...prev, newMsg]);
     setChatMsg("");
     setTimeout(() => chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" }), 50);
   };
@@ -118,7 +116,6 @@ export default function GroupDetail() {
               <h1 className="gold-gradient-text text-3xl md:text-4xl font-cinzel font-bold">{group.name}</h1>
               <p className="text-muted-foreground mt-2 text-sm max-w-xl">{group.description}</p>
             </div>
-            {/* Countdown */}
             {group.isLive && (
               <div className="glass-card p-4 rounded-xl text-center min-w-[160px]">
                 <p className="text-muted-foreground text-xs uppercase tracking-widest mb-2">Time Remaining</p>
@@ -135,30 +132,33 @@ export default function GroupDetail() {
             )}
           </div>
 
-          {/* Group Info Row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gold/10">
             {[
               { label: "Contribution", value: `₦${group.contributionAmount.toLocaleString()}` },
               { label: "Cycle", value: group.cycleType },
               { label: "Slots Filled", value: `${group.filledSlots} / ${group.totalSlots}` },
               { label: "Remaining", value: `${group.totalSlots - group.filledSlots} slots` },
-            ].map(i => (
-              <div key={i.label}>
-                <p className="text-muted-foreground text-xs uppercase tracking-widest">{i.label}</p>
-                <p className="text-foreground font-bold capitalize mt-0.5">{i.value}</p>
+            ].map(item => (
+              <div key={item.label}>
+                <p className="text-muted-foreground text-xs uppercase tracking-widest">{item.label}</p>
+                <p className="text-foreground font-bold capitalize mt-0.5">{item.value}</p>
               </div>
             ))}
           </div>
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* Slot Grid */}
+          {/* Left: Slot Grid + Payment */}
           <div className="xl:col-span-2 space-y-6">
             <div className="glass-card-static rounded-2xl p-6 animate-fade-up delay-100">
               <h2 className="gold-text font-cinzel font-bold text-sm uppercase tracking-widest mb-4">Slot Selection Grid</h2>
-              {/* Legend */}
               <div className="flex flex-wrap gap-3 mb-4 text-xs">
-                {[["bg-emerald-900/40 border border-emerald-600/40", "Available"], ["bg-red-900/30 border border-red-600/30", "Taken"], ["bg-amber-900/20 border border-amber-500/30", "Locked"], ["bg-gold/20 border border-gold", "Your Slot"]].map(([cls, label]) => (
+                {[
+                  ["bg-emerald-900/40 border border-emerald-600/40", "Available"],
+                  ["bg-red-900/30 border border-red-600/30", "Taken"],
+                  ["bg-amber-900/20 border border-amber-500/30", "Locked"],
+                  ["bg-gold/20 border border-gold", "Your Slot"],
+                ].map(([cls, label]) => (
                   <span key={label} className="flex items-center gap-1.5">
                     <span className={`w-4 h-4 rounded ${cls}`} />
                     <span className="text-muted-foreground">{label}</span>
@@ -179,7 +179,6 @@ export default function GroupDetail() {
               </div>
             </div>
 
-            {/* Payment */}
             {isLoggedIn && (
               <div className="glass-card-static rounded-2xl p-6 animate-fade-up delay-200">
                 <h2 className="gold-text font-cinzel font-bold text-sm uppercase tracking-widest mb-4">Make Payment</h2>
@@ -205,8 +204,9 @@ export default function GroupDetail() {
                       </div>
                     )}
                     <button
-                      onClick={() => { if (payProof) setPayDone(true); else alert("Please upload payment screenshot first"); }}
-                      className="btn-gold w-full py-3 rounded-xl font-bold text-sm"
+                      onClick={() => { if (payProof) setPayDone(true); }}
+                      className={`btn-gold w-full py-3 rounded-xl font-bold text-sm ${!payProof ? "opacity-50 cursor-not-allowed" : ""}`}
+                      disabled={!payProof}
                     >
                       I Have Made Payment
                     </button>
@@ -224,7 +224,6 @@ export default function GroupDetail() {
 
           {/* Right Sidebar */}
           <div className="space-y-6">
-            {/* Participants */}
             <div className="glass-card-static rounded-2xl overflow-hidden animate-fade-up delay-200">
               <div className="px-5 py-4 border-b border-gold/10 flex items-center gap-2">
                 <Users size={15} className="text-gold" />
@@ -248,7 +247,6 @@ export default function GroupDetail() {
               </div>
             </div>
 
-            {/* Group Chat */}
             <div className="glass-card-static rounded-2xl overflow-hidden animate-fade-up delay-300">
               <div className="px-5 py-4 border-b border-gold/10 flex items-center justify-between">
                 <h2 className="gold-text font-cinzel font-bold text-sm uppercase tracking-wide">Group Chat</h2>
@@ -267,7 +265,7 @@ export default function GroupDetail() {
                         <div className="w-6 h-6 rounded-full bg-gold/20 flex items-center justify-center shrink-0 text-[10px] font-bold text-gold">
                           {m.username[0].toUpperCase()}
                         </div>
-                        <div className={`max-w-[75%] ${m.username === currentUser?.username ? "items-end" : "items-start"} flex flex-col`}>
+                        <div className={`max-w-[75%] flex flex-col ${m.username === currentUser?.username ? "items-end" : "items-start"}`}>
                           <span className="text-muted-foreground text-[10px] mb-0.5">{m.username} · {m.time}</span>
                           <div className={`px-3 py-2 rounded-xl text-xs ${m.username === currentUser?.username ? "bg-gold/15 border border-gold/20 text-foreground" : "bg-muted/40 text-foreground/80"}`}>
                             {m.text}
@@ -310,8 +308,8 @@ export default function GroupDetail() {
             </div>
             <p className="text-muted-foreground text-sm leading-relaxed mb-4">{group.termsText}</p>
             <div className="mb-4">
-              <label className="luxury-label">Select Payment Time (daily deadline)</label>
-              <input type="time" value={paymentTime.replace(" AM", "").replace(" PM", "")} onChange={e => setPaymentTime(e.target.value)} className="luxury-input" />
+              <label className="luxury-label">Select Daily Payment Deadline</label>
+              <input type="time" value={paymentTime} onChange={e => setPaymentTime(e.target.value)} className="luxury-input" />
               <p className="text-muted-foreground text-xs mt-1">⚠️ You cannot change this time once confirmed. Only admin can edit it.</p>
             </div>
             <div className="flex gap-3">

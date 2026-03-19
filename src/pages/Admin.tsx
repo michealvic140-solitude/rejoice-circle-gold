@@ -799,7 +799,7 @@ export default function Admin() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Personal info */}
               {[
-                { label: "Full Name",    key: "fullName",  val: editingUser.fullName,  icon: <User size={12} /> },
+                { label: "Full Name",    key: "fullName",  val: editingUser.fullName,  icon: <UserCog size={12} /> },
                 { label: "Username",     key: "username",  val: editingUser.username,  icon: <Hash size={12} /> },
                 { label: "Email",        key: "email",     val: editingUser.email,     icon: <Mail size={12} /> },
                 { label: "Phone Number", key: "phone",     val: editingUser.phone,     icon: <Phone size={12} /> },

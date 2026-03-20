@@ -136,7 +136,7 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | null>(null);
 
-export const mockUser: User = {
+const mockUser: User = {
   id: "u1",
   username: "goldmember",
   firstName: "Rejoice",

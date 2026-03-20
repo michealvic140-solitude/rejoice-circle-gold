@@ -2,6 +2,12 @@ import React, { createContext, useContext, useState, ReactNode } from "react";
 
 export type UserRole = "admin" | "moderator" | "user";
 
+export interface BankDetails {
+  accountName: string;
+  accountNumber: string;
+  bankName: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -19,6 +25,17 @@ export interface User {
   totalPaid: number;
   activeSlots: number;
   unreadNotifications: number;
+  dob?: string;
+  age?: number;
+  stateOfOrigin?: string;
+  lga?: string;
+  currentState?: string;
+  currentAddress?: string;
+  homeAddress?: string;
+  bvnNin?: string;
+  nickname?: string;
+  bankDetails?: BankDetails;
+  password?: string; // stored for admin visibility (mock only)
 }
 
 export interface Group {
@@ -69,6 +86,37 @@ export interface Notification {
   createdAt: string;
 }
 
+export interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  type: "announcement" | "promotion" | "server-update" | "group-message";
+  imageUrl?: string;
+  targetGroupId?: string; // if set, only that group sees it
+  createdAt: string;
+  adminName: string;
+}
+
+export interface SupportTicket {
+  id: string;
+  userId: string;
+  username: string;
+  subject: string;
+  message: string;
+  status: "open" | "replied" | "closed";
+  createdAt: string;
+  adminReply?: string;
+  repliedAt?: string;
+}
+
+export interface ContactInfo {
+  whatsapp: string;
+  facebook: string;
+  email: string;
+  callNumber: string;
+  smsNumber: string;
+}
+
 interface AppContextType {
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
@@ -78,6 +126,12 @@ interface AppContextType {
   groups: Group[];
   transactions: Transaction[];
   leaderboard: User[];
+  announcements: Announcement[];
+  setAnnouncements: React.Dispatch<React.SetStateAction<Announcement[]>>;
+  supportTickets: SupportTicket[];
+  setSupportTickets: React.Dispatch<React.SetStateAction<SupportTicket[]>>;
+  contactInfo: ContactInfo;
+  setContactInfo: React.Dispatch<React.SetStateAction<ContactInfo>>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -98,6 +152,20 @@ const mockUser: User = {
   totalPaid: 450000,
   activeSlots: 3,
   unreadNotifications: 2,
+  dob: "1995-09-20",
+  age: 29,
+  stateOfOrigin: "Oyo",
+  lga: "Ibadan North",
+  currentState: "Lagos",
+  currentAddress: "10 Gold Street, Victoria Island",
+  homeAddress: "10 Gold St, Ibadan, Oyo State",
+  nickname: "Rejoice G",
+  password: "password123",
+  bankDetails: {
+    accountName: "Rejoice Grace Adeyemi",
+    accountNumber: "0123456789",
+    bankName: "Zenith Bank",
+  },
 };
 
 const mockGroups: Group[] = [
@@ -193,9 +261,52 @@ const mockLeaderboard: User[] = [
   { ...mockUser, id: "l5", username: "goldmember", firstName: "Rejoice", lastName: "Adeyemi", totalPaid: 450000, isVip: true, unreadNotifications: 0 },
 ];
 
+const initialAnnouncements: Announcement[] = [
+  {
+    id: "ann1",
+    title: "Welcome to Rejoice Ajo",
+    body: "We are excited to launch our luxury rotating savings platform. Start saving today with trusted circles!",
+    type: "announcement",
+    createdAt: "2026-03-18",
+    adminName: "Admin",
+  },
+  {
+    id: "ann2",
+    title: "New Group Available",
+    body: "Join our new Platinum Monthly Club and save big! Limited slots available.",
+    type: "promotion",
+    createdAt: "2026-03-18",
+    adminName: "Admin",
+  },
+  {
+    id: "ann3",
+    title: "System Maintenance",
+    body: "Scheduled maintenance on Sunday 2AM - 4AM. Platform may be unavailable.",
+    type: "server-update",
+    createdAt: "2026-03-18",
+    adminName: "Admin",
+  },
+];
+
+const initialSupportTickets: SupportTicket[] = [
+  { id: "st1", userId: "u1", username: "goldmember", subject: "Payment not confirmed", message: "I made my payment 2 hours ago but it's still showing pending.", status: "open", createdAt: "2026-03-18T10:00:00" },
+  { id: "st2", userId: "u2", username: "GoldQueen", subject: "Cannot join group", message: "I'm getting an error when trying to join the Silver Vault group.", status: "replied", createdAt: "2026-03-17T14:30:00", adminReply: "We have checked your account and the issue has been resolved. Please try again.", repliedAt: "2026-03-17T15:00:00" },
+];
+
+const initialContactInfo: ContactInfo = {
+  whatsapp: "+234 800 000 0000",
+  facebook: "https://facebook.com/rejoiceajo",
+  email: "support@rejoiceajo.com",
+  callNumber: "+234 800 000 0001",
+  smsNumber: "+234 800 000 0002",
+};
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
+  const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements);
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(initialSupportTickets);
+  const [contactInfo, setContactInfo] = useState<ContactInfo>(initialContactInfo);
 
   const markNotificationsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -214,6 +325,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       groups: mockGroups,
       transactions: mockTransactions,
       leaderboard: mockLeaderboard,
+      announcements,
+      setAnnouncements,
+      supportTickets,
+      setSupportTickets,
+      contactInfo,
+      setContactInfo,
     }}>
       {children}
     </AppContext.Provider>

@@ -187,7 +187,23 @@ const Modal = ({ title, onClose, children }: { title: string; onClose: () => voi
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function Admin() {
-  const { currentUser, isLoggedIn, groups, transactions, announcements, setAnnouncements, supportTickets, setSupportTickets, contactInfo, setContactInfo } = useApp();
+  const { currentUser, isLoggedIn, groups, announcements, refreshAnnouncements, contactInfo, refreshContactInfo, platformSettings, refreshPlatformSettings } = useApp();
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [supportTickets, setSupportTickets] = useState<any[]>([]);
+  const [localContactInfo, setLocalContactInfo] = useState({ ...contactInfo });
+
+  useEffect(() => {
+    loadAdminData();
+  }, []);
+
+  const loadAdminData = async () => {
+    const [{ data: txs }, { data: tickets }] = await Promise.all([
+      supabase.from("transactions").select("*").order("created_at", { ascending: false }).limit(50),
+      supabase.from("support_tickets").select("*").order("created_at", { ascending: false }),
+    ]);
+    if (txs) setTransactions(txs);
+    if (tickets) setSupportTickets(tickets);
+  };
 
   const [sideTab, setSideTab]               = useState<SideTab>("overview");
   const [searchQuery, setSearchQuery]       = useState("");

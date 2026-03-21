@@ -27,7 +27,8 @@ const ANNOUNCEMENT_STYLE: Record<string, { border: string; bg: string; iconBg: s
 };
 
 export default function Landing() {
-  const { groups, leaderboard, announcements, contactInfo } = useApp();
+  const { groups, announcements, contactInfo } = useApp();
+  const leaderboard: any[] = [];
 
   // Only public (non group-specific) announcements
   const publicAnnouncements = announcements.filter(a => !a.targetGroupId);

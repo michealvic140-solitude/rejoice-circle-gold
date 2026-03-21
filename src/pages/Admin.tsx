@@ -225,7 +225,7 @@ export default function Admin() {
   const [reminderMsg, setReminderMsg]           = useState("");
   const [annTitle, setAnnTitle]                 = useState("");
   const [annBody, setAnnBody]                   = useState("");
-  const [annType, setAnnType]                   = useState<Announcement["type"]>("announcement");
+  const [annType, setAnnType]                   = useState<"announcement"|"promotion"|"server-update"|"group-message">("announcement");
   const [annImg, setAnnImg]                     = useState<string | null>(null);
   const [groupMsgTarget, setGroupMsgTarget]     = useState("");
   const [groupMsgBody, setGroupMsgBody]         = useState("");

@@ -1,4 +1,5 @@
 import { useApp } from "@/context/AppContext";
+// Groups page uses live Supabase data via AppContext
 import GroupCard from "@/components/GroupCard";
 import ParticleBackground from "@/components/ParticleBackground";
 import { Search, SlidersHorizontal } from "lucide-react";

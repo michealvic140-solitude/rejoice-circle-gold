@@ -1027,7 +1027,7 @@ export default function Admin() {
           <div className="space-y-4">
             <div>
               <label className="luxury-label">Type</label>
-              <select value={annType} onChange={e => setAnnType(e.target.value as Announcement["type"])} className="luxury-input">
+              <select value={annType} onChange={e => setAnnType(e.target.value as "announcement"|"promotion"|"server-update"|"group-message")} className="luxury-input">
                 <option value="announcement">Announcement</option>
                 <option value="promotion">Promotion</option>
                 <option value="server-update">Server Update</option>

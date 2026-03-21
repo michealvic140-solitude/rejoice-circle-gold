@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ArrowRight, ChevronRight } from "lucide-react";
-import { useApp } from "@/context/AppContext";
-import { mockUser } from "@/context/AppContext";
+import { supabase } from "@/lib/supabase";
 import ParticleBackground from "@/components/ParticleBackground";
 
 const nigerianStates = [
@@ -18,7 +17,7 @@ export default function Register() {
   const [step, setStep] = useState<Step>(1);
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { setCurrentUser } = useApp();
+  const [error, setError] = useState("");
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
@@ -32,21 +31,71 @@ export default function Register() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.password !== form.confirmPassword) return alert("Passwords do not match");
+    setError("");
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (form.password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1000));
-    setCurrentUser({
-      ...mockUser,
-      username: form.username || "newmember",
-      firstName: form.firstName,
-      middleName: form.middleName,
-      lastName: form.lastName,
-      email: form.email,
-      phone: form.phone,
-      isVip: false,
-      unreadNotifications: 1,
-    });
-    navigate("/dashboard");
+    try {
+      // Check username availability
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("username")
+        .eq("username", form.username)
+        .single();
+
+      if (existing) {
+        setError("Username already taken. Please choose another.");
+        setLoading(false);
+        return;
+      }
+
+      // Create auth user
+      const { data: authData, error: signUpErr } = await supabase.auth.signUp({
+        email: form.email,
+        password: form.password,
+        options: {
+          data: {
+            username: form.username,
+            first_name: form.firstName,
+            last_name: form.lastName,
+          }
+        }
+      });
+
+      if (signUpErr) {
+        setError(signUpErr.message);
+        setLoading(false);
+        return;
+      }
+
+      if (authData.user) {
+        // Update profile with full data
+        await supabase.from("profiles").update({
+          middle_name: form.middleName || null,
+          phone: form.phone,
+          dob: form.dob,
+          age: parseInt(form.age) || null,
+          state_of_origin: form.stateOfOrigin,
+          lga: form.lga,
+          current_state: form.currentState,
+          current_address: form.currentAddress,
+          home_address: form.fullHomeAddress,
+          bvn_nin: form.bvnNin || null,
+        }).eq("id", authData.user.id);
+
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      setError("Registration failed. Please try again.");
+    }
+    setLoading(false);
   };
 
   const stepLabels = ["Personal Info", "Location Details", "Account Setup"];
@@ -57,7 +106,6 @@ export default function Register() {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_40%_40%,rgba(234,179,8,0.04)_0%,transparent_60%)]" />
 
       <div className="relative w-full max-w-2xl animate-scale-in">
-        {/* Header */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-4">
             <div className="w-10 h-10 rounded-full bg-gold-gradient flex items-center justify-center animate-glow-pulse">
@@ -68,7 +116,6 @@ export default function Register() {
           <p className="text-muted-foreground text-sm mt-2">Join the Rejoice Ajo savings community</p>
         </div>
 
-        {/* Step indicators */}
         <div className="flex items-center justify-center gap-3 mb-8">
           {stepLabels.map((label, i) => {
             const s = (i + 1) as Step;
@@ -92,8 +139,10 @@ export default function Register() {
 
         <form onSubmit={handleSubmit}>
           <div className="glass-card-static p-8 rounded-2xl border border-gold/20">
+            {error && (
+              <div className="mb-4 p-3 rounded-lg bg-red-900/20 border border-red-600/30 text-red-400 text-xs">{error}</div>
+            )}
 
-            {/* ---- STEP 1: Personal Info ---- */}
             {step === 1 && (
               <div className="space-y-4 animate-fade-up">
                 <h2 className="gold-text font-cinzel font-bold text-sm uppercase tracking-widest mb-6">Personal Information</h2>
@@ -113,7 +162,6 @@ export default function Register() {
               </div>
             )}
 
-            {/* ---- STEP 2: Location ---- */}
             {step === 2 && (
               <div className="space-y-4 animate-fade-up">
                 <h2 className="gold-text font-cinzel font-bold text-sm uppercase tracking-widest mb-6">Location Details</h2>
@@ -145,7 +193,6 @@ export default function Register() {
               </div>
             )}
 
-            {/* ---- STEP 3: Account Setup ---- */}
             {step === 3 && (
               <div className="space-y-4 animate-fade-up">
                 <h2 className="gold-text font-cinzel font-bold text-sm uppercase tracking-widest mb-6">Account Setup</h2>
@@ -156,7 +203,7 @@ export default function Register() {
                 <div>
                   <label className="luxury-label">Password *</label>
                   <div className="relative">
-                    <input type={showPw ? "text" : "password"} value={form.password} onChange={set("password")} placeholder="Create strong password" className="luxury-input pr-10" required minLength={8} />
+                    <input type={showPw ? "text" : "password"} value={form.password} onChange={set("password")} placeholder="Create strong password (min 8 chars)" className="luxury-input pr-10" required minLength={8} />
                     <button type="button" onClick={() => setShowPw(!showPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-gold transition-colors">
                       {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -167,11 +214,9 @@ export default function Register() {
                   <label className="luxury-label">BVN / NIN <span className="text-muted-foreground normal-case font-normal">(Optional)</span></label>
                   <input type="text" value={form.bvnNin} onChange={set("bvnNin")} placeholder="BVN or NIN for identity verification" className="luxury-input" />
                 </div>
-
                 <div className="p-3 rounded-lg bg-gold/5 border border-gold/15 text-xs text-muted-foreground mt-2">
                   By creating an account you agree to our Terms of Service and Privacy Policy. Your data is securely stored and protected.
                 </div>
-
                 <div className="flex gap-3 mt-4">
                   <button type="button" onClick={() => setStep(2)} className="btn-glass flex-1 py-3 rounded-xl font-semibold text-sm">Back</button>
                   <button type="submit" disabled={loading} className="btn-gold flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60">

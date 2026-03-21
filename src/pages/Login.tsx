@@ -2,10 +2,9 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { mockUser } from "@/context/AppContext";
+import { supabase } from "@/lib/supabase";
 import ParticleBackground from "@/components/ParticleBackground";
 
-// Floating ₦ coin
 const Coin = ({ style }: { style: React.CSSProperties }) => (
   <div
     className="absolute rounded-full flex items-center justify-center font-black select-none pointer-events-none"
@@ -13,13 +12,9 @@ const Coin = ({ style }: { style: React.CSSProperties }) => (
       width: 56, height: 56,
       background: "radial-gradient(circle at 35% 35%, hsl(45,100%,72%), hsl(38,92%,40%), hsl(30,85%,25%))",
       boxShadow: "0 4px 20px rgba(234,179,8,0.5), inset 0 1px 2px rgba(255,255,255,0.3)",
-      color: "hsl(45,93%,30%)",
-      fontSize: 22,
-      ...style,
+      color: "hsl(45,93%,30%)", fontSize: 22, ...style,
     }}
-  >
-    ₦
-  </div>
+  >₦</div>
 );
 
 const COINS = [
@@ -36,12 +31,12 @@ const COINS = [
   { top: "78%", right: "2%", animDelay: "1.4s",  scale: 1.1 },
   { top: "40%", left: "14%", animDelay: "0.7s",  scale: 0.75 },
   { top: "48%", right: "14%",animDelay: "1.1s",  scale: 0.85 },
-  { top: "90%", left: "20%", animDelay: "0.5s",  scale: 1.0  },
+  { top: "90%", left: "20%", animDelay: "0.5s",  scale: 1.0 },
   { top: "88%", right: "15%",animDelay: "1.3s",  scale: 0.9 },
 ];
 
-// Admin credentials
 const ADMIN_USERNAME = "michaelvictor0014";
+const ADMIN_EMAIL    = "michaelvictor0014@rejoiceajo.com";
 const ADMIN_PASSWORD = "Goodynessy1";
 
 export default function Login() {
@@ -50,27 +45,84 @@ export default function Login() {
   const [showPw, setShowPw]         = useState(false);
   const [error, setError]           = useState("");
   const [loading, setLoading]       = useState(false);
-  const { setCurrentUser } = useApp();
+  const { platformSettings } = useApp();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    await new Promise(r => setTimeout(r, 900));
 
-    // Admin login
-    if (identifier === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-      setCurrentUser({ ...mockUser, role: "admin", username: ADMIN_USERNAME, id: "admin-1" });
-      navigate("/admin");
-    }
-    // Demo user (goldmember) — kept for platform testing
-    else if ((identifier === "goldmember" || identifier === "rejoice@example.com") && password === "password123") {
-      setCurrentUser({ ...mockUser });
-      navigate("/dashboard");
-    }
-    else {
-      setError("Invalid email/username or password. Please try again.");
+    try {
+      // Attempt Supabase auth
+      let emailToUse = identifier;
+
+      // If username entered, try to find email
+      if (!identifier.includes("@")) {
+        // Check admin shortcut
+        if (identifier === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+          emailToUse = ADMIN_EMAIL;
+        } else {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("email")
+            .eq("username", identifier)
+            .single();
+          if (prof?.email) {
+            emailToUse = prof.email;
+          } else {
+            setError("Username not found. Please check and try again.");
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      const { data, error: authErr } = await supabase.auth.signInWithPassword({
+        email: emailToUse,
+        password,
+      });
+
+      if (authErr) {
+        setError("Invalid credentials. Please check your email/username and password.");
+        setLoading(false);
+        return;
+      }
+
+      // Check if user is banned/frozen
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("is_banned, is_frozen")
+        .eq("id", data.user!.id)
+        .single();
+
+      if (prof?.is_banned) {
+        await supabase.auth.signOut();
+        setError("Your account has been suspended. Please contact support.");
+        setLoading(false);
+        return;
+      }
+
+      if (prof?.is_frozen) {
+        setError("Your account is currently frozen. Please contact support.");
+        setLoading(false);
+        return;
+      }
+
+      // Check role for redirect
+      const { data: roleRow } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", data.user!.id)
+        .single();
+
+      if (roleRow?.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
     }
     setLoading(false);
   };
@@ -96,33 +148,25 @@ export default function Login() {
       {/* Floating coins */}
       {COINS.map((c, i) => (
         <Coin key={i} style={{
-          top: c.top,
-          left: (c as any).left,
-          right: (c as any).right,
-          transform: `scale(${c.scale})`,
-          animationDelay: c.animDelay,
-          zIndex: 1,
-          animation: `float-coin 4s ease-in-out infinite`,
+          top: c.top, left: (c as any).left, right: (c as any).right,
+          transform: `scale(${c.scale})`, animationDelay: c.animDelay,
+          zIndex: 1, animation: `float-coin 4s ease-in-out infinite`,
         }} />
       ))}
 
-      {/* Version */}
       <div className="absolute bottom-6 left-6 z-10">
-        <span className="text-muted-foreground/60 text-xs font-mono tracking-wider">V1.06</span>
+        <span className="text-muted-foreground/60 text-xs font-mono tracking-wider">V2.0</span>
       </div>
 
-      {/* Main card */}
       <div className="relative z-10 w-full max-w-md mx-4 animate-scale-in">
         <div
           className="rounded-2xl p-8 md:p-10 border border-white/10"
           style={{
             background: "rgba(10,10,10,0.80)",
             backdropFilter: "blur(32px)",
-            WebkitBackdropFilter: "blur(32px)",
             boxShadow: "0 0 60px rgba(234,179,8,0.08), 0 32px 80px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06)",
           }}
         >
-          {/* Logo mark */}
           <div className="flex items-center gap-2 mb-2">
             <div className="w-8 h-8 rounded-full bg-gold-gradient flex items-center justify-center">
               <span className="text-obsidian font-cinzel font-black text-xs">RA</span>
@@ -130,91 +174,67 @@ export default function Login() {
             <span className="gold-gradient-text font-cinzel font-bold text-sm tracking-widest">RTA</span>
           </div>
 
-          {/* Heading */}
           <div className="text-center mb-8 mt-4">
             <h1
               className="font-cinzel font-black text-3xl md:text-4xl leading-tight mb-1"
               style={{
                 background: "linear-gradient(135deg, #d4a017, #f0c040, #c8860a, #eab308)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
+                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
                 letterSpacing: "0.05em",
               }}
-            >
-              REJOICE TRUST
-            </h1>
+            >REJOICE TRUST</h1>
             <h2
               className="font-cinzel font-black text-3xl md:text-4xl leading-tight"
               style={{
                 background: "linear-gradient(135deg, #d4a017, #f0c040, #c8860a, #eab308)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
+                WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
                 letterSpacing: "0.05em",
               }}
-            >
-              AJO PLATFORM
-            </h2>
+            >AJO PLATFORM</h2>
             <p className="text-muted-foreground text-xs mt-3 tracking-widest uppercase">Sign in to your account</p>
           </div>
 
-          {/* Form */}
+          {/* Maintenance notice */}
+          {platformSettings.maintenanceMode && (
+            <div className="mb-4 p-3 rounded-xl bg-amber-900/20 border border-amber-600/30 text-amber-400 text-xs text-center">
+              ⚠️ Platform is under maintenance. Only admins & moderators can sign in.
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <input
-                type="text"
-                value={identifier}
-                onChange={e => setIdentifier(e.target.value)}
+                type="text" value={identifier} onChange={e => setIdentifier(e.target.value)}
                 placeholder="Email or Username"
                 className="w-full px-4 py-3.5 rounded-xl text-sm font-medium transition-all"
-                style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  color: "hsl(45,100%,90%)",
-                  outline: "none",
-                }}
-                onFocus={e => { e.target.style.borderColor = "rgba(234,179,8,0.5)"; e.target.style.background = "rgba(255,255,255,0.09)"; }}
-                onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.12)"; e.target.style.background = "rgba(255,255,255,0.06)"; }}
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "hsl(45,100%,90%)", outline: "none" }}
+                onFocus={e => { e.target.style.borderColor = "rgba(234,179,8,0.5)"; }}
+                onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.12)"; }}
                 required
               />
             </div>
-
             <div className="relative">
               <input
-                type={showPw ? "text" : "password"}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
+                type={showPw ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
                 placeholder="Password"
                 className="w-full px-4 py-3.5 pr-12 rounded-xl text-sm font-medium transition-all"
-                style={{
-                  background: "rgba(255,255,255,0.06)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  color: "hsl(45,100%,90%)",
-                  outline: "none",
-                }}
-                onFocus={e => { e.target.style.borderColor = "rgba(234,179,8,0.5)"; e.target.style.background = "rgba(255,255,255,0.09)"; }}
-                onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.12)"; e.target.style.background = "rgba(255,255,255,0.06)"; }}
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: "hsl(45,100%,90%)", outline: "none" }}
+                onFocus={e => { e.target.style.borderColor = "rgba(234,179,8,0.5)"; }}
+                onBlur={e => { e.target.style.borderColor = "rgba(255,255,255,0.12)"; }}
                 required
               />
-              <button
-                type="button"
-                onClick={() => setShowPw(!showPw)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-gold transition-colors p-1"
-              >
+              <button type="button" onClick={() => setShowPw(!showPw)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-gold transition-colors p-1">
                 {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
 
             {error && (
-              <div className="text-center py-2 px-3 rounded-lg bg-red-900/20 border border-red-600/30 text-red-400 text-xs">
-                {error}
-              </div>
+              <div className="text-center py-2 px-3 rounded-lg bg-red-900/20 border border-red-600/30 text-red-400 text-xs">{error}</div>
             )}
 
             <button
-              type="submit"
-              disabled={loading}
+              type="submit" disabled={loading}
               className="w-full py-3.5 rounded-xl font-bold text-sm tracking-widest disabled:opacity-60 transition-all mt-2"
               style={{
                 background: loading ? "rgba(234,179,8,0.5)" : "linear-gradient(135deg, hsl(45,93%,47%), hsl(38,92%,42%))",
@@ -231,7 +251,6 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Links */}
           <div className="flex items-center justify-center gap-4 mt-5 text-xs text-muted-foreground">
             <Link to="/forgot-password" className="hover:text-gold transition-colors">Forgot Password?</Link>
             <span className="text-muted-foreground/30">|</span>

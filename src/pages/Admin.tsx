@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { Navigate } from "react-router-dom";
+import { supabase } from "@/lib/supabase";
 import {
   Users, BarChart3, Shield, FileText, Bell, Ban, Star, Unlock, Lock,
   Search, AlertTriangle, CheckCircle, X, MessageSquare,
@@ -11,7 +12,6 @@ import {
   CreditCard, Reply, UserCog, Tag, Server, Info
 } from "lucide-react";
 import ParticleBackground from "@/components/ParticleBackground";
-import type { Announcement, SupportTicket } from "@/context/AppContext";
 
 type SideTab =
   | "overview" | "users" | "groups" | "payments"

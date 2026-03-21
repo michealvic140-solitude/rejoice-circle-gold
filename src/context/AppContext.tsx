@@ -1,30 +1,18 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { supabase } from "@/lib/supabase";
+import type { User as SupabaseUser, Session } from "@supabase/supabase-js";
 
 export type UserRole = "admin" | "moderator" | "user";
 
-export interface BankDetails {
-  accountName: string;
-  accountNumber: string;
-  bankName: string;
-}
-
-export interface User {
+export interface Profile {
   id: string;
   username: string;
   firstName: string;
   middleName?: string;
   lastName: string;
-  email: string;
-  phone: string;
-  role: UserRole;
-  isVip: boolean;
-  isRestricted: boolean;
-  isBanned: boolean;
-  isFrozen: boolean;
-  profilePicture?: string;
-  totalPaid: number;
-  activeSlots: number;
-  unreadNotifications: number;
+  nickname?: string;
+  email?: string;
+  phone?: string;
   dob?: string;
   age?: number;
   stateOfOrigin?: string;
@@ -33,15 +21,25 @@ export interface User {
   currentAddress?: string;
   homeAddress?: string;
   bvnNin?: string;
-  nickname?: string;
-  bankDetails?: BankDetails;
-  password?: string; // stored for admin visibility (mock only)
+  profilePicture?: string;
+  isVip: boolean;
+  isRestricted: boolean;
+  isBanned: boolean;
+  isFrozen: boolean;
+  isDefaulter: boolean;
+  totalPaid: number;
+  trustScore: number;
+  bankAccName?: string;
+  bankAccNumber?: string;
+  bankName?: string;
+  role: UserRole;
+  unreadNotifications: number;
 }
 
 export interface Group {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   contributionAmount: number;
   cycleType: "daily" | "weekly" | "monthly";
   totalSlots: number;
@@ -49,7 +47,6 @@ export interface Group {
   isLive: boolean;
   isLocked: boolean;
   chatLocked: boolean;
-  payoutAccount?: string;
   bankName?: string;
   accountNumber?: string;
   accountName?: string;
@@ -57,31 +54,41 @@ export interface Group {
   createdAt: string;
 }
 
-export interface Slot {
-  id: number;
+export interface SlotRow {
+  id: string;
   groupId: string;
+  seatNumber: number;
   userId?: string;
   username?: string;
-  status: "available" | "locked" | "taken" | "mine";
-  lockedUntil?: Date;
+  fullName?: string;
+  status: "available" | "locked" | "taken";
+  lockedUntil?: string;
   paymentTime?: string;
+  paymentStatus: "unpaid" | "pending" | "paid" | "defaulter";
+  isDisbursed: boolean;
+  disbursedAt?: string;
 }
 
 export interface Transaction {
   id: string;
   code: string;
-  groupName: string;
+  groupId?: string;
+  groupName?: string;
   userId: string;
+  username?: string;
+  seatNumber?: number;
   amount: number;
   status: "pending" | "approved" | "declined";
-  date: string;
   screenshotUrl?: string;
+  adminNote?: string;
+  createdAt: string;
 }
 
 export interface Notification {
   id: string;
   userId: string;
   message: string;
+  type: string;
   read: boolean;
   createdAt: string;
 }
@@ -92,21 +99,31 @@ export interface Announcement {
   body: string;
   type: "announcement" | "promotion" | "server-update" | "group-message";
   imageUrl?: string;
-  targetGroupId?: string; // if set, only that group sees it
+  targetGroupId?: string;
+  adminName?: string;
   createdAt: string;
-  adminName: string;
 }
 
 export interface SupportTicket {
   id: string;
   userId: string;
-  username: string;
+  username?: string;
   subject: string;
   message: string;
+  attachmentUrl?: string;
   status: "open" | "replied" | "closed";
-  createdAt: string;
   adminReply?: string;
   repliedAt?: string;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  performedByUsername?: string;
+  targetUsername?: string;
+  type: string;
+  createdAt: string;
 }
 
 export interface ContactInfo {
@@ -117,183 +134,38 @@ export interface ContactInfo {
   smsNumber: string;
 }
 
+export interface PlatformSettings {
+  maintenanceMode: boolean;
+  maintenanceMessage: string;
+}
+
 interface AppContextType {
-  currentUser: User | null;
-  setCurrentUser: (user: User | null) => void;
+  // Auth
+  session: Session | null;
+  currentUser: Profile | null;
   isLoggedIn: boolean;
-  notifications: Notification[];
-  markNotificationsRead: () => void;
+  authLoading: boolean;
+  setCurrentUser: (u: Profile | null) => void;
+  refreshProfile: () => Promise<void>;
+
+  // Data
   groups: Group[];
-  transactions: Transaction[];
-  leaderboard: User[];
+  refreshGroups: () => Promise<void>;
+  notifications: Notification[];
+  unreadCount: number;
+  markNotificationsRead: () => void;
+  refreshNotifications: () => Promise<void>;
   announcements: Announcement[];
-  setAnnouncements: React.Dispatch<React.SetStateAction<Announcement[]>>;
-  supportTickets: SupportTicket[];
-  setSupportTickets: React.Dispatch<React.SetStateAction<SupportTicket[]>>;
+  refreshAnnouncements: () => Promise<void>;
   contactInfo: ContactInfo;
-  setContactInfo: React.Dispatch<React.SetStateAction<ContactInfo>>;
+  refreshContactInfo: () => Promise<void>;
+  platformSettings: PlatformSettings;
+  refreshPlatformSettings: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
-const mockUser: User = {
-  id: "u1",
-  username: "goldmember",
-  firstName: "Rejoice",
-  middleName: "Grace",
-  lastName: "Adeyemi",
-  email: "rejoice@example.com",
-  phone: "+234 801 234 5678",
-  role: "user",
-  isVip: true,
-  isRestricted: false,
-  isBanned: false,
-  isFrozen: false,
-  totalPaid: 450000,
-  activeSlots: 3,
-  unreadNotifications: 2,
-  dob: "1995-09-20",
-  age: 29,
-  stateOfOrigin: "Oyo",
-  lga: "Ibadan North",
-  currentState: "Lagos",
-  currentAddress: "10 Gold Street, Victoria Island",
-  homeAddress: "10 Gold St, Ibadan, Oyo State",
-  nickname: "Rejoice G",
-  password: "password123",
-  bankDetails: {
-    accountName: "Rejoice Grace Adeyemi",
-    accountNumber: "0123456789",
-    bankName: "Zenith Bank",
-  },
-};
-
-const mockGroups: Group[] = [
-  {
-    id: "g1",
-    name: "Golden Circle Alpha",
-    description: "Our premier daily contribution group for serious savers. Members contribute daily and receive payouts in slot order.",
-    contributionAmount: 5000,
-    cycleType: "daily",
-    totalSlots: 100,
-    filledSlots: 67,
-    isLive: true,
-    isLocked: false,
-    chatLocked: false,
-    bankName: "First Bank Nigeria",
-    accountNumber: "3012345678",
-    accountName: "Rejoice Ajo Platform",
-    termsText: "By joining this group you agree to make daily contributions on time. Failure to pay will result in defaulter status. All members must contribute for the full cycle duration.",
-    createdAt: "2025-01-15",
-  },
-  {
-    id: "g2",
-    name: "Silver Vault Weekly",
-    description: "Weekly contributions for those who prefer a relaxed saving pace. Ideal for mid-level savers.",
-    contributionAmount: 25000,
-    cycleType: "weekly",
-    totalSlots: 100,
-    filledSlots: 42,
-    isLive: true,
-    isLocked: false,
-    chatLocked: false,
-    bankName: "GTBank",
-    accountNumber: "0123456789",
-    accountName: "Rejoice Ajo Platform",
-    termsText: "Weekly contributions must be made before 11:59 PM every Sunday. Late payment = defaulter status.",
-    createdAt: "2025-02-01",
-  },
-  {
-    id: "g3",
-    name: "Platinum Monthly Reserve",
-    description: "Monthly contributions for high-value savers. Receive large payout when your slot arrives.",
-    contributionAmount: 100000,
-    cycleType: "monthly",
-    totalSlots: 100,
-    filledSlots: 18,
-    isLive: false,
-    isLocked: false,
-    chatLocked: false,
-    bankName: "Zenith Bank",
-    accountNumber: "2012345678",
-    accountName: "Rejoice Ajo Platform",
-    termsText: "Monthly contributions are due on the 1st of each month. Members must contribute for the full 12-month cycle.",
-    createdAt: "2025-03-01",
-  },
-  {
-    id: "g4",
-    name: "Diamond Elite Circle",
-    description: "Exclusive group for top contributors. Limited slots available for our most trusted members.",
-    contributionAmount: 50000,
-    cycleType: "weekly",
-    totalSlots: 50,
-    filledSlots: 48,
-    isLive: true,
-    isLocked: false,
-    chatLocked: true,
-    bankName: "Access Bank",
-    accountNumber: "0098765432",
-    accountName: "Rejoice Ajo Platform",
-    termsText: "Diamond Elite members hold a higher standard. Contributions must be verified with a payment screenshot uploaded by 9 PM every Sunday.",
-    createdAt: "2025-01-05",
-  },
-];
-
-const mockTransactions: Transaction[] = [
-  { id: "t1", code: "RAJ-0000012", groupName: "Golden Circle Alpha", userId: "u1", amount: 5000, status: "approved", date: "2025-03-17" },
-  { id: "t2", code: "RAJ-0000011", groupName: "Golden Circle Alpha", userId: "u1", amount: 5000, status: "approved", date: "2025-03-16" },
-  { id: "t3", code: "RAJ-0000010", groupName: "Silver Vault Weekly", userId: "u1", amount: 25000, status: "pending", date: "2025-03-15" },
-  { id: "t4", code: "RAJ-0000009", groupName: "Golden Circle Alpha", userId: "u1", amount: 5000, status: "declined", date: "2025-03-14" },
-  { id: "t5", code: "RAJ-0000008", groupName: "Platinum Monthly Reserve", userId: "u1", amount: 100000, status: "approved", date: "2025-03-01" },
-];
-
-const mockNotifications: Notification[] = [
-  { id: "n1", userId: "u1", message: "Dear Rejoice Adeyemi, your payment for Golden Circle Alpha has been approved.", read: false, createdAt: "2025-03-17T08:00:00" },
-  { id: "n2", userId: "u1", message: "Dear Rejoice Adeyemi, Silver Vault Weekly has gone LIVE! Start your contributions today.", read: false, createdAt: "2025-03-16T09:00:00" },
-  { id: "n3", userId: "u1", message: "Dear Rejoice Adeyemi, your upcoming payout for slot #5 is scheduled for this week.", read: true, createdAt: "2025-03-15T10:00:00" },
-];
-
-const mockLeaderboard: User[] = [
-  { ...mockUser, id: "l1", username: "ChiefSaver", firstName: "Emeka", lastName: "Okonkwo", totalPaid: 1200000, isVip: true, unreadNotifications: 0 },
-  { ...mockUser, id: "l2", username: "GoldQueen", firstName: "Aisha", lastName: "Mohammed", totalPaid: 980000, isVip: true, unreadNotifications: 0 },
-  { ...mockUser, id: "l3", username: "StrongBase", firstName: "Tunde", lastName: "Bakare", totalPaid: 750000, isVip: false, unreadNotifications: 0 },
-  { ...mockUser, id: "l4", username: "FaithSaves", firstName: "Ngozi", lastName: "Eze", totalPaid: 620000, isVip: true, unreadNotifications: 0 },
-  { ...mockUser, id: "l5", username: "goldmember", firstName: "Rejoice", lastName: "Adeyemi", totalPaid: 450000, isVip: true, unreadNotifications: 0 },
-];
-
-const initialAnnouncements: Announcement[] = [
-  {
-    id: "ann1",
-    title: "Welcome to Rejoice Ajo",
-    body: "We are excited to launch our luxury rotating savings platform. Start saving today with trusted circles!",
-    type: "announcement",
-    createdAt: "2026-03-18",
-    adminName: "Admin",
-  },
-  {
-    id: "ann2",
-    title: "New Group Available",
-    body: "Join our new Platinum Monthly Club and save big! Limited slots available.",
-    type: "promotion",
-    createdAt: "2026-03-18",
-    adminName: "Admin",
-  },
-  {
-    id: "ann3",
-    title: "System Maintenance",
-    body: "Scheduled maintenance on Sunday 2AM - 4AM. Platform may be unavailable.",
-    type: "server-update",
-    createdAt: "2026-03-18",
-    adminName: "Admin",
-  },
-];
-
-const initialSupportTickets: SupportTicket[] = [
-  { id: "st1", userId: "u1", username: "goldmember", subject: "Payment not confirmed", message: "I made my payment 2 hours ago but it's still showing pending.", status: "open", createdAt: "2026-03-18T10:00:00" },
-  { id: "st2", userId: "u2", username: "GoldQueen", subject: "Cannot join group", message: "I'm getting an error when trying to join the Silver Vault group.", status: "replied", createdAt: "2026-03-17T14:30:00", adminReply: "We have checked your account and the issue has been resolved. Please try again.", repliedAt: "2026-03-17T15:00:00" },
-];
-
-const initialContactInfo: ContactInfo = {
+const DEFAULT_CONTACT: ContactInfo = {
   whatsapp: "+234 800 000 0000",
   facebook: "https://facebook.com/rejoiceajo",
   email: "support@rejoiceajo.com",
@@ -301,36 +173,196 @@ const initialContactInfo: ContactInfo = {
   smsNumber: "+234 800 000 0002",
 };
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [notifications, setNotifications] = useState<Notification[]>(mockNotifications);
-  const [announcements, setAnnouncements] = useState<Announcement[]>(initialAnnouncements);
-  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(initialSupportTickets);
-  const [contactInfo, setContactInfo] = useState<ContactInfo>(initialContactInfo);
+const DEFAULT_SETTINGS: PlatformSettings = {
+  maintenanceMode: false,
+  maintenanceMessage: "The platform is currently under maintenance. Please check back later.",
+};
 
-  const markNotificationsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    if (currentUser) {
-      setCurrentUser({ ...currentUser, unreadNotifications: 0 });
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<Session | null>(null);
+  const [currentUser, setCurrentUser] = useState<Profile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [contactInfo, setContactInfo] = useState<ContactInfo>(DEFAULT_CONTACT);
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings>(DEFAULT_SETTINGS);
+
+  // ── Load profile from DB ──────────────────────────────────────────────────
+  const loadProfile = async (userId: string): Promise<Profile | null> => {
+    try {
+      const [{ data: profile }, { data: roleRow }] = await Promise.all([
+        supabase.from("profiles").select("*").eq("id", userId).single(),
+        supabase.from("user_roles").select("role").eq("user_id", userId).single(),
+      ]);
+      if (!profile) return null;
+      const { count } = await supabase
+        .from("notifications")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("read", false);
+      return {
+        id: profile.id,
+        username: profile.username,
+        firstName: profile.first_name,
+        middleName: profile.middle_name,
+        lastName: profile.last_name,
+        nickname: profile.nickname,
+        email: profile.email,
+        phone: profile.phone,
+        dob: profile.dob,
+        age: profile.age,
+        stateOfOrigin: profile.state_of_origin,
+        lga: profile.lga,
+        currentState: profile.current_state,
+        currentAddress: profile.current_address,
+        homeAddress: profile.home_address,
+        bvnNin: profile.bvn_nin,
+        profilePicture: profile.profile_picture,
+        isVip: profile.is_vip,
+        isRestricted: profile.is_restricted,
+        isBanned: profile.is_banned,
+        isFrozen: profile.is_frozen,
+        isDefaulter: profile.is_defaulter,
+        totalPaid: profile.total_paid,
+        trustScore: profile.trust_score,
+        bankAccName: profile.bank_acc_name,
+        bankAccNumber: profile.bank_acc_number,
+        bankName: profile.bank_name,
+        role: (roleRow?.role as UserRole) || "user",
+        unreadNotifications: count || 0,
+      };
+    } catch {
+      return null;
     }
   };
 
+  const refreshProfile = async () => {
+    if (session?.user) {
+      const p = await loadProfile(session.user.id);
+      setCurrentUser(p);
+    }
+  };
+
+  // ── Auth listener ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, sess) => {
+      setSession(sess);
+      if (sess?.user) {
+        const p = await loadProfile(sess.user.id);
+        setCurrentUser(p);
+      } else {
+        setCurrentUser(null);
+      }
+      setAuthLoading(false);
+    });
+
+    supabase.auth.getSession().then(async ({ data: { session: sess } }) => {
+      setSession(sess);
+      if (sess?.user) {
+        const p = await loadProfile(sess.user.id);
+        setCurrentUser(p);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ── Load public data ──────────────────────────────────────────────────────
+  const refreshGroups = async () => {
+    const { data } = await supabase.from("groups").select("*").order("created_at", { ascending: false });
+    if (data) {
+      setGroups(data.map(g => ({
+        id: g.id, name: g.name, description: g.description,
+        contributionAmount: g.contribution_amount, cycleType: g.cycle_type,
+        totalSlots: g.total_slots, filledSlots: g.filled_slots,
+        isLive: g.is_live, isLocked: g.is_locked, chatLocked: g.chat_locked,
+        bankName: g.bank_name, accountNumber: g.account_number, accountName: g.account_name,
+        termsText: g.terms_text, createdAt: g.created_at,
+      })));
+    }
+  };
+
+  const refreshNotifications = async () => {
+    if (!session?.user) return;
+    const { data } = await supabase
+      .from("notifications").select("*")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    if (data) {
+      setNotifications(data.map(n => ({
+        id: n.id, userId: n.user_id, message: n.message,
+        type: n.type, read: n.read, createdAt: n.created_at,
+      })));
+    }
+  };
+
+  const markNotificationsRead = async () => {
+    if (!session?.user) return;
+    await supabase.from("notifications")
+      .update({ read: true })
+      .eq("user_id", session.user.id)
+      .eq("read", false);
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setCurrentUser(prev => prev ? { ...prev, unreadNotifications: 0 } : null);
+  };
+
+  const refreshAnnouncements = async () => {
+    const { data } = await supabase
+      .from("announcements").select("*")
+      .is("target_group_id", null)
+      .order("created_at", { ascending: false });
+    if (data) {
+      setAnnouncements(data.map(a => ({
+        id: a.id, title: a.title, body: a.body, type: a.type,
+        imageUrl: a.image_url, targetGroupId: a.target_group_id,
+        adminName: a.admin_name, createdAt: a.created_at,
+      })));
+    }
+  };
+
+  const refreshContactInfo = async () => {
+    const { data } = await supabase.from("contact_info").select("*").eq("id", 1).single();
+    if (data) {
+      setContactInfo({
+        whatsapp: data.whatsapp || "", facebook: data.facebook || "",
+        email: data.email || "", callNumber: data.call_number || "",
+        smsNumber: data.sms_number || "",
+      });
+    }
+  };
+
+  const refreshPlatformSettings = async () => {
+    const { data } = await supabase.from("platform_settings").select("*").eq("id", 1).single();
+    if (data) {
+      setPlatformSettings({
+        maintenanceMode: data.maintenance_mode,
+        maintenanceMessage: data.maintenance_message,
+      });
+    }
+  };
+
+  useEffect(() => {
+    refreshGroups();
+    refreshAnnouncements();
+    refreshContactInfo();
+    refreshPlatformSettings();
+  }, []);
+
+  useEffect(() => {
+    if (session?.user) refreshNotifications();
+  }, [session]);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
+
   return (
     <AppContext.Provider value={{
-      currentUser,
-      setCurrentUser,
-      isLoggedIn: !!currentUser,
-      notifications,
-      markNotificationsRead,
-      groups: mockGroups,
-      transactions: mockTransactions,
-      leaderboard: mockLeaderboard,
-      announcements,
-      setAnnouncements,
-      supportTickets,
-      setSupportTickets,
-      contactInfo,
-      setContactInfo,
+      session, currentUser, isLoggedIn: !!currentUser, authLoading, setCurrentUser,
+      refreshProfile, groups, refreshGroups, notifications, unreadCount,
+      markNotificationsRead, refreshNotifications, announcements, refreshAnnouncements,
+      contactInfo, refreshContactInfo, platformSettings, refreshPlatformSettings,
     }}>
       {children}
     </AppContext.Provider>
@@ -342,5 +374,3 @@ export function useApp() {
   if (!ctx) throw new Error("useApp must be used inside AppProvider");
   return ctx;
 }
-
-export { mockUser, mockGroups, mockTransactions, mockLeaderboard };

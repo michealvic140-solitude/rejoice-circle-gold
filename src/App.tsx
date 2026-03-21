@@ -13,6 +13,10 @@ import Groups from "@/pages/Groups";
 import GroupDetail from "@/pages/GroupDetail";
 import Profile from "@/pages/Profile";
 import Admin from "@/pages/Admin";
+import Transactions from "@/pages/Transactions";
+import Support from "@/pages/Support";
+import Savings from "@/pages/Savings";
+import ForgotPassword from "@/pages/ForgotPassword";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,11 +33,15 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/groups" element={<Groups />} />
             <Route path="/groups/:id" element={<GroupDetail />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/transactions" element={<Transactions />} />
+            <Route path="/support" element={<Support />} />
+            <Route path="/savings" element={<Savings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

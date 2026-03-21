@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useApp } from "@/context/AppContext";
 import { Navigate } from "react-router-dom";
+import { supabase } from "@/lib/supabase";
 import {
   Users, BarChart3, Shield, FileText, Bell, Ban, Star, Unlock, Lock,
   Search, AlertTriangle, CheckCircle, X, MessageSquare,
@@ -11,7 +12,6 @@ import {
   CreditCard, Reply, UserCog, Tag, Server, Info
 } from "lucide-react";
 import ParticleBackground from "@/components/ParticleBackground";
-import type { Announcement, SupportTicket } from "@/context/AppContext";
 
 type SideTab =
   | "overview" | "users" | "groups" | "payments"
@@ -187,7 +187,23 @@ const Modal = ({ title, onClose, children }: { title: string; onClose: () => voi
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 export default function Admin() {
-  const { currentUser, isLoggedIn, groups, transactions, announcements, setAnnouncements, supportTickets, setSupportTickets, contactInfo, setContactInfo } = useApp();
+  const { currentUser, isLoggedIn, groups, announcements, refreshAnnouncements, contactInfo, refreshContactInfo, platformSettings, refreshPlatformSettings } = useApp();
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [supportTickets, setSupportTickets] = useState<any[]>([]);
+  const [localContactInfo, setLocalContactInfo] = useState({ ...contactInfo });
+
+  useEffect(() => {
+    loadAdminData();
+  }, []);
+
+  const loadAdminData = async () => {
+    const [{ data: txs }, { data: tickets }] = await Promise.all([
+      supabase.from("transactions").select("*").order("created_at", { ascending: false }).limit(50),
+      supabase.from("support_tickets").select("*").order("created_at", { ascending: false }),
+    ]);
+    if (txs) setTransactions(txs);
+    if (tickets) setSupportTickets(tickets);
+  };
 
   const [sideTab, setSideTab]               = useState<SideTab>("overview");
   const [searchQuery, setSearchQuery]       = useState("");
@@ -209,7 +225,7 @@ export default function Admin() {
   const [reminderMsg, setReminderMsg]           = useState("");
   const [annTitle, setAnnTitle]                 = useState("");
   const [annBody, setAnnBody]                   = useState("");
-  const [annType, setAnnType]                   = useState<Announcement["type"]>("announcement");
+  const [annType, setAnnType]                   = useState<"announcement"|"promotion"|"server-update"|"group-message">("announcement");
   const [annImg, setAnnImg]                     = useState<string | null>(null);
   const [groupMsgTarget, setGroupMsgTarget]     = useState("");
   const [groupMsgBody, setGroupMsgBody]         = useState("");
@@ -261,63 +277,51 @@ export default function Admin() {
     }));
   };
 
-  const submitAnnouncement = () => {
+  const submitAnnouncement = async () => {
     if (!annTitle || !annBody) return;
-    const newAnn: Announcement = {
-      id: `ann-${Date.now()}`,
-      title: annTitle,
-      body: annBody,
-      type: annType,
-      imageUrl: annImg ?? undefined,
-      createdAt: new Date().toISOString().split("T")[0],
-      adminName: "michaelvictor0014",
-    };
-    setAnnouncements(prev => [newAnn, ...prev]);
+    await supabase.from("announcements").insert({
+      title: annTitle, body: annBody, type: annType,
+      image_url: annImg ?? null, admin_name: currentUser?.username ?? "admin",
+    });
+    await refreshAnnouncements();
     setAnnTitle(""); setAnnBody(""); setAnnImg(null); setShowAnnouncement(false);
   };
 
-  const submitGroupMessage = () => {
+  const submitGroupMessage = async () => {
     if (!groupMsgTarget || !groupMsgBody) return;
     const group = groups.find(g => g.id === groupMsgTarget);
-    const newAnn: Announcement = {
-      id: `gm-${Date.now()}`,
+    await supabase.from("announcements").insert({
       title: `Message to ${group?.name ?? "Group"}`,
-      body: groupMsgBody,
-      type: "group-message",
-      targetGroupId: groupMsgTarget,
-      createdAt: new Date().toISOString().split("T")[0],
-      adminName: "michaelvictor0014",
-    };
-    setAnnouncements(prev => [newAnn, ...prev]);
+      body: groupMsgBody, type: "group-message",
+      target_group_id: groupMsgTarget, admin_name: currentUser?.username ?? "admin",
+    });
     setGroupMsgBody(""); setGroupMsgTarget(""); setShowGroupMsg(false);
   };
 
-  const submitSupportReply = (ticketId: string) => {
+  const submitSupportReply = async (ticketId: string) => {
     if (!supportReplyText) return;
-    setSupportTickets(prev => prev.map(t =>
-      t.id === ticketId
-        ? { ...t, adminReply: supportReplyText, status: "replied" as SupportTicket["status"], repliedAt: new Date().toISOString() }
-        : t
+    await supabase.from("support_tickets").update({
+      admin_reply: supportReplyText, status: "replied", replied_at: new Date().toISOString(),
+    }).eq("id", ticketId);
+    setSupportTickets((prev: any[]) => prev.map((t: any) =>
+      t.id === ticketId ? { ...t, admin_reply: supportReplyText, status: "replied" } : t
     ));
     setSupportReplyText(""); setShowSupportReply(null);
   };
 
-  const saveUserEdit = (userId: string) => {
-    setUserList(prev => prev.map(u => {
-      if (u.id !== userId) return u;
-      return {
-        ...u,
-        fullName:  editedUser.fullName  ?? u.fullName,
-        email:     editedUser.email     ?? u.email,
-        phone:     editedUser.phone     ?? u.phone,
-        dob:       editedUser.dob       ?? u.dob,
-        state:     editedUser.state     ?? u.state,
-        lga:       editedUser.lga       ?? u.lga,
-        address:   editedUser.address   ?? u.address,
-        username:  editedUser.username  ?? u.username,
-        password:  editedUser.password  ?? u.password,
-      };
-    }));
+  const saveUserEdit = async (userId: string) => {
+    await supabase.from("profiles").update({
+      first_name: editedUser.firstName,
+      last_name: editedUser.lastName,
+      email: editedUser.email,
+      phone: editedUser.phone,
+      dob: editedUser.dob,
+      state_of_origin: editedUser.state,
+      lga: editedUser.lga,
+      current_address: editedUser.address,
+      username: editedUser.username,
+    }).eq("id", userId);
+    setUserList((prev: any[]) => prev.map((u: any) => u.id !== userId ? u : { ...u, ...editedUser }));
     setEditedUser({});
     setShowUserEdit(null);
   };
@@ -330,8 +334,13 @@ export default function Admin() {
     reader.readAsDataURL(file);
   };
 
-  const saveContactInfo = () => {
-    setContactInfo(editContact);
+  const saveContactInfo = async () => {
+    await supabase.from("contact_info").update({
+      whatsapp: localContactInfo.whatsapp, facebook: localContactInfo.facebook,
+      email: localContactInfo.email, call_number: localContactInfo.callNumber,
+      sms_number: localContactInfo.smsNumber,
+    }).eq("id", 1);
+    await refreshContactInfo();
   };
 
   // ── User edit modal data ──
@@ -600,7 +609,7 @@ export default function Admin() {
                     <p className="text-muted-foreground text-xs mt-1">{ann.body}</p>
                     {ann.imageUrl && <img src={ann.imageUrl} alt="" className="mt-2 h-16 rounded-lg object-cover" />}
                   </div>
-                  <Btn size="xs" variant="red" onClick={() => setAnnouncements(prev => prev.filter(a => a.id !== ann.id))}>
+                   <Btn size="xs" variant="red" onClick={async () => { await supabase.from("announcements").delete().eq("id", ann.id); await refreshAnnouncements(); }}>
                     <Trash2 size={10} />Delete
                   </Btn>
                 </div>
@@ -628,7 +637,7 @@ export default function Admin() {
                     <p className="text-foreground font-semibold text-sm">{ann.title}</p>
                     <p className="text-muted-foreground text-xs mt-1">{ann.body}</p>
                   </div>
-                  <Btn size="xs" variant="red" onClick={() => setAnnouncements(prev => prev.filter(a => a.id !== ann.id))}>
+                  <Btn size="xs" variant="red" onClick={async () => { await supabase.from("announcements").delete().eq("id", ann.id); await refreshAnnouncements(); }}>
                     <Trash2 size={10} />Delete
                   </Btn>
                 </div>
@@ -1018,7 +1027,7 @@ export default function Admin() {
           <div className="space-y-4">
             <div>
               <label className="luxury-label">Type</label>
-              <select value={annType} onChange={e => setAnnType(e.target.value as Announcement["type"])} className="luxury-input">
+              <select value={annType} onChange={e => setAnnType(e.target.value as "announcement"|"promotion"|"server-update"|"group-message")} className="luxury-input">
                 <option value="announcement">Announcement</option>
                 <option value="promotion">Promotion</option>
                 <option value="server-update">Server Update</option>

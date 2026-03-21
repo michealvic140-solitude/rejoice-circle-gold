@@ -609,7 +609,7 @@ export default function Admin() {
                     <p className="text-muted-foreground text-xs mt-1">{ann.body}</p>
                     {ann.imageUrl && <img src={ann.imageUrl} alt="" className="mt-2 h-16 rounded-lg object-cover" />}
                   </div>
-                  <Btn size="xs" variant="red" onClick={() => setAnnouncements(prev => prev.filter(a => a.id !== ann.id))}>
+                   <Btn size="xs" variant="red" onClick={async () => { await supabase.from("announcements").delete().eq("id", ann.id); await refreshAnnouncements(); }}>
                     <Trash2 size={10} />Delete
                   </Btn>
                 </div>

@@ -277,63 +277,51 @@ export default function Admin() {
     }));
   };
 
-  const submitAnnouncement = () => {
+  const submitAnnouncement = async () => {
     if (!annTitle || !annBody) return;
-    const newAnn: Announcement = {
-      id: `ann-${Date.now()}`,
-      title: annTitle,
-      body: annBody,
-      type: annType,
-      imageUrl: annImg ?? undefined,
-      createdAt: new Date().toISOString().split("T")[0],
-      adminName: "michaelvictor0014",
-    };
-    setAnnouncements(prev => [newAnn, ...prev]);
+    await supabase.from("announcements").insert({
+      title: annTitle, body: annBody, type: annType,
+      image_url: annImg ?? null, admin_name: currentUser?.username ?? "admin",
+    });
+    await refreshAnnouncements();
     setAnnTitle(""); setAnnBody(""); setAnnImg(null); setShowAnnouncement(false);
   };
 
-  const submitGroupMessage = () => {
+  const submitGroupMessage = async () => {
     if (!groupMsgTarget || !groupMsgBody) return;
     const group = groups.find(g => g.id === groupMsgTarget);
-    const newAnn: Announcement = {
-      id: `gm-${Date.now()}`,
+    await supabase.from("announcements").insert({
       title: `Message to ${group?.name ?? "Group"}`,
-      body: groupMsgBody,
-      type: "group-message",
-      targetGroupId: groupMsgTarget,
-      createdAt: new Date().toISOString().split("T")[0],
-      adminName: "michaelvictor0014",
-    };
-    setAnnouncements(prev => [newAnn, ...prev]);
+      body: groupMsgBody, type: "group-message",
+      target_group_id: groupMsgTarget, admin_name: currentUser?.username ?? "admin",
+    });
     setGroupMsgBody(""); setGroupMsgTarget(""); setShowGroupMsg(false);
   };
 
-  const submitSupportReply = (ticketId: string) => {
+  const submitSupportReply = async (ticketId: string) => {
     if (!supportReplyText) return;
-    setSupportTickets(prev => prev.map(t =>
-      t.id === ticketId
-        ? { ...t, adminReply: supportReplyText, status: "replied" as SupportTicket["status"], repliedAt: new Date().toISOString() }
-        : t
+    await supabase.from("support_tickets").update({
+      admin_reply: supportReplyText, status: "replied", replied_at: new Date().toISOString(),
+    }).eq("id", ticketId);
+    setSupportTickets((prev: any[]) => prev.map((t: any) =>
+      t.id === ticketId ? { ...t, admin_reply: supportReplyText, status: "replied" } : t
     ));
     setSupportReplyText(""); setShowSupportReply(null);
   };
 
-  const saveUserEdit = (userId: string) => {
-    setUserList(prev => prev.map(u => {
-      if (u.id !== userId) return u;
-      return {
-        ...u,
-        fullName:  editedUser.fullName  ?? u.fullName,
-        email:     editedUser.email     ?? u.email,
-        phone:     editedUser.phone     ?? u.phone,
-        dob:       editedUser.dob       ?? u.dob,
-        state:     editedUser.state     ?? u.state,
-        lga:       editedUser.lga       ?? u.lga,
-        address:   editedUser.address   ?? u.address,
-        username:  editedUser.username  ?? u.username,
-        password:  editedUser.password  ?? u.password,
-      };
-    }));
+  const saveUserEdit = async (userId: string) => {
+    await supabase.from("profiles").update({
+      first_name: editedUser.firstName,
+      last_name: editedUser.lastName,
+      email: editedUser.email,
+      phone: editedUser.phone,
+      dob: editedUser.dob,
+      state_of_origin: editedUser.state,
+      lga: editedUser.lga,
+      current_address: editedUser.address,
+      username: editedUser.username,
+    }).eq("id", userId);
+    setUserList((prev: any[]) => prev.map((u: any) => u.id !== userId ? u : { ...u, ...editedUser }));
     setEditedUser({});
     setShowUserEdit(null);
   };
@@ -346,8 +334,13 @@ export default function Admin() {
     reader.readAsDataURL(file);
   };
 
-  const saveContactInfo = () => {
-    setContactInfo(editContact);
+  const saveContactInfo = async () => {
+    await supabase.from("contact_info").update({
+      whatsapp: localContactInfo.whatsapp, facebook: localContactInfo.facebook,
+      email: localContactInfo.email, call_number: localContactInfo.callNumber,
+      sms_number: localContactInfo.smsNumber,
+    }).eq("id", 1);
+    await refreshContactInfo();
   };
 
   // ── User edit modal data ──

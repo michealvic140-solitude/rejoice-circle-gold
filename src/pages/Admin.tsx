@@ -637,7 +637,7 @@ export default function Admin() {
                     <p className="text-foreground font-semibold text-sm">{ann.title}</p>
                     <p className="text-muted-foreground text-xs mt-1">{ann.body}</p>
                   </div>
-                  <Btn size="xs" variant="red" onClick={() => setAnnouncements(prev => prev.filter(a => a.id !== ann.id))}>
+                  <Btn size="xs" variant="red" onClick={async () => { await supabase.from("announcements").delete().eq("id", ann.id); await refreshAnnouncements(); }}>
                     <Trash2 size={10} />Delete
                   </Btn>
                 </div>

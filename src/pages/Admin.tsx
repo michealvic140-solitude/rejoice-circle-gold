@@ -263,7 +263,7 @@ export default function Admin() {
       await supabase.from("profiles").update(updates).eq("id", userId);
     }
     if (newRole !== null) {
-      await supabase.from("user_roles").update({ role: newRole }).eq("user_id", userId);
+      await supabase.from("user_roles").update({ role: newRole as "admin" | "moderator" | "user" }).eq("user_id", userId);
     }
     await supabase.from("audit_logs").insert({
       action: `Admin performed action "${action}" on user ${dbUsers.find(x => x.id === userId)?.username}`,

@@ -17,6 +17,7 @@ import Transactions from "@/pages/Transactions";
 import Support from "@/pages/Support";
 import Savings from "@/pages/Savings";
 import ForgotPassword from "@/pages/ForgotPassword";
+import AuditLogs from "@/pages/AuditLogs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/support" element={<Support />} />
             <Route path="/savings" element={<Savings />} />
+            <Route path="/audit-logs" element={<AuditLogs />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

@@ -274,12 +274,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const { data } = await supabase.from("groups").select("*").order("created_at", { ascending: false });
     if (data) {
       setGroups(data.map(g => ({
-        id: g.id, name: g.name, description: g.description,
-        contributionAmount: g.contribution_amount, cycleType: g.cycle_type,
-        totalSlots: g.total_slots, filledSlots: g.filled_slots,
-        isLive: g.is_live, isLocked: g.is_locked, chatLocked: g.chat_locked,
-        bankName: g.bank_name, accountNumber: g.account_number, accountName: g.account_name,
-        termsText: g.terms_text, createdAt: g.created_at,
+        id: g.id, name: g.name, description: g.description ?? undefined,
+        contributionAmount: g.contribution_amount, cycleType: (g.cycle_type as Group["cycleType"]),
+        totalSlots: g.total_slots ?? 0, filledSlots: g.filled_slots ?? 0,
+        isLive: g.is_live ?? false, isLocked: g.is_locked ?? false, chatLocked: g.chat_locked ?? false,
+        bankName: g.bank_name ?? undefined, accountNumber: g.account_number ?? undefined, accountName: g.account_name ?? undefined,
+        termsText: g.terms_text ?? "", createdAt: g.created_at ?? "",
       })));
     }
   };
@@ -316,9 +316,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .order("created_at", { ascending: false });
     if (data) {
       setAnnouncements(data.map(a => ({
-        id: a.id, title: a.title, body: a.body, type: a.type,
-        imageUrl: a.image_url, targetGroupId: a.target_group_id,
-        adminName: a.admin_name, createdAt: a.created_at,
+        id: a.id, title: a.title, body: a.body, type: (a.type as Announcement["type"]) ?? "announcement",
+        imageUrl: a.image_url ?? undefined, targetGroupId: a.target_group_id ?? undefined,
+        adminName: a.admin_name ?? undefined, createdAt: a.created_at ?? "",
       })));
     }
   };

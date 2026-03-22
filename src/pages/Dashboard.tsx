@@ -15,6 +15,7 @@ const SIDEBAR_LINKS = [
   { icon: Shield,          label: "Groups",        to: "/groups" },
   { icon: Receipt,         label: "Transactions",  to: "/transactions" },
   { icon: HeadphonesIcon,  label: "Support",       to: "/support" },
+  { icon: Calendar,        label: "Activity Log",  to: "/audit-logs" },
   { icon: Settings,        label: "Settings",      to: "/profile" },
 ];
 

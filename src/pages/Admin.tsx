@@ -255,9 +255,10 @@ export default function Admin() {
         updates.is_defaulter = false; break;
       case "moderator":
         const usr = dbUsers.find(x => x.id === userId);
-        newRole = usr?.role === "moderator" ? "user" : "moderator";
+      newRole = usr?.role === "moderator" ? "user" : "moderator";
         break;
     }
+
     if (Object.keys(updates).length > 0) {
       await supabase.from("profiles").update(updates).eq("id", userId);
     }

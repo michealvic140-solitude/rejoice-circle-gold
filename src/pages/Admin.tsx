@@ -824,7 +824,7 @@ export default function Admin() {
                   </TR>
                 ))}
                 {transactions.length === 0 && (
-                  <TR><TD className="text-center text-muted-foreground py-6" colSpan={9 as any}>No transactions yet.</TD></TR>
+                  <TR><TD className="text-center text-muted-foreground py-6">No transactions yet.</TD></TR>
                 )}
               </TableComp>
             )}

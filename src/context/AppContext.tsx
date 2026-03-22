@@ -316,9 +316,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .order("created_at", { ascending: false });
     if (data) {
       setAnnouncements(data.map(a => ({
-        id: a.id, title: a.title, body: a.body, type: a.type,
-        imageUrl: a.image_url, targetGroupId: a.target_group_id,
-        adminName: a.admin_name, createdAt: a.created_at,
+        id: a.id, title: a.title, body: a.body, type: (a.type as Announcement["type"]) ?? "announcement",
+        imageUrl: a.image_url ?? undefined, targetGroupId: a.target_group_id ?? undefined,
+        adminName: a.admin_name ?? undefined, createdAt: a.created_at ?? "",
       })));
     }
   };

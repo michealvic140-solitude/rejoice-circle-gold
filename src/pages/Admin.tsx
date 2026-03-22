@@ -254,8 +254,8 @@ export default function Admin() {
       case "defaulter-remove":
         updates.is_defaulter = false; break;
       case "moderator":
-        const usr = dbUsers.find(x => x.id === userId);
-      newRole = usr?.role === "moderator" ? "user" : "moderator";
+      const usr = dbUsers.find(x => x.id === userId);
+        newRole = (usr?.role === "moderator" ? "user" : "moderator") as "user" | "moderator";
         break;
     }
 

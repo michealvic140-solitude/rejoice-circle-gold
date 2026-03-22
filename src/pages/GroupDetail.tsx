@@ -6,80 +6,103 @@ import {
   ChevronDown, Bell, Trash2
 } from "lucide-react";
 import ParticleBackground from "@/components/ParticleBackground";
+import { supabase } from "@/lib/supabase";
+
+interface DBSlot {
+  id: string;
+  seat_number: number;
+  user_id: string | null;
+  username: string | null;
+  full_name: string | null;
+  status: string;
+  locked_until: string | null;
+  payment_status: string | null;
+  payment_time: string | null;
+  is_disbursed: boolean | null;
+}
 
 interface ChatMessage {
   id: string;
+  user_id: string;
   username: string;
-  text: string;
-  time: string;
+  message: string;
+  created_at: string;
+  is_system: boolean | null;
 }
-
-const MOCK_MESSAGES: ChatMessage[] = [
-  { id: "m1", username: "ChiefSaver", text: "Good morning everyone! Remember today's payment deadline is 8PM.", time: "07:15 AM" },
-  { id: "m2", username: "GoldQueen", text: "Paid mine already! ✅ Screenshot uploaded.", time: "08:30 AM" },
-  { id: "m3", username: "goldmember", text: "On my way to make payment now 💪", time: "09:00 AM" },
-  { id: "m4", username: "FaithSaves", text: "Has everyone made payment today? Let's keep our trust scores high!", time: "09:30 AM" },
-];
-
-// Each participant can hold multiple seats — name repeated for each
-const MOCK_PARTICIPANTS_SEATS: Array<{ seatNo: number; username: string; fullName: string; trustScore: string; isVip?: boolean }> = [
-  { seatNo: 1,  username: "ChiefSaver",   fullName: "Emeka Okonkwo",      trustScore: "98%" , isVip: true  },
-  { seatNo: 2,  username: "GoldQueen",    fullName: "Aisha Mohammed",     trustScore: "95%" , isVip: true  },
-  { seatNo: 3,  username: "StrongBase",   fullName: "Tunde Bakare",       trustScore: "89%"               },
-  { seatNo: 4,  username: "FaithSaves",   fullName: "Ngozi Eze",          trustScore: "92%"               },
-  { seatNo: 5,  username: "goldmember",   fullName: "Rejoice Adeyemi",    trustScore: "95%" , isVip: true  },
-  { seatNo: 6,  username: "RoyalSaver",   fullName: "Bola Adewale",       trustScore: "78%"               },
-  { seatNo: 7,  username: "TrustPillar",  fullName: "Chidi Nwosu",        trustScore: "85%"               },
-  { seatNo: 8,  username: "DiamondHand",  fullName: "Fatima Garba",       trustScore: "91%" , isVip: true  },
-  { seatNo: 9,  username: "VaultKeeper",  fullName: "Samuel Ojo",         trustScore: "74%"               },
-  { seatNo: 10, username: "GoldQueen",    fullName: "Aisha Mohammed",     trustScore: "95%" , isVip: true  }, // multi-seat
-  { seatNo: 11, username: "ChiefSaver",   fullName: "Emeka Okonkwo",      trustScore: "98%" , isVip: true  }, // multi-seat
-  { seatNo: 12, username: "SilverStar",   fullName: "Kemi Adeyemi",       trustScore: "82%"               },
-  { seatNo: 13, username: "IronWill",     fullName: "David Obi",          trustScore: "77%"               },
-  { seatNo: 14, username: "NobleCircle",  fullName: "Grace Ihejirika",    trustScore: "88%"               },
-  { seatNo: 15, username: "goldmember",   fullName: "Rejoice Adeyemi",    trustScore: "95%" , isVip: true  }, // multi-seat
-];
-
-const initSlots = () =>
-  Array.from({ length: 100 }, (_, i) => {
-    const seatNo = i + 1;
-    const participant = MOCK_PARTICIPANTS_SEATS.find(p => p.seatNo === seatNo);
-    const isMine = seatNo === 5 || seatNo === 15;
-    return {
-      id: seatNo,
-      status: (
-        isMine ? "mine" :
-        participant ? "taken" :
-        seatNo === 20 || seatNo === 30 || seatNo === 40 ? "locked" :
-        "available"
-      ) as "available" | "taken" | "locked" | "mine",
-      occupant: participant?.username,
-    };
-  });
 
 export default function GroupDetail() {
   const { id } = useParams<{ id: string }>();
   const { groups, isLoggedIn, currentUser } = useApp();
 
-  const [slots, setSlots] = useState(initSlots);
+  const [dbSlots, setDbSlots] = useState<DBSlot[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loadingSlots, setLoadingSlots] = useState(true);
   const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [showTerms, setShowTerms] = useState(false);
   const [paymentTime, setPaymentTime] = useState("08:00 PM");
   const [chatMsg, setChatMsg] = useState("");
-  const [messages, setMessages] = useState<ChatMessage[]>(MOCK_MESSAGES);
   const [countdown, setCountdown] = useState({ h: 24, m: 0, s: 0 });
-  const [payProof, setPayProof] = useState(false);
+  const [payProof, setPayProof] = useState<File | null>(null);
   const [payDone, setPayDone] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [exitReason, setExitReason] = useState("");
   const [exitRequested, setExitRequested] = useState(false);
   const [showParticipants, setShowParticipants] = useState(true);
   const [showChat, setShowChat] = useState(true);
   const [showPayment, setShowPayment] = useState(false);
+  const [joiningSlot, setJoiningSlot] = useState(false);
+  const [submittingPayment, setSubmittingPayment] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
   const chatRef = useRef<HTMLDivElement>(null);
 
   const group = groups.find(g => g.id === id);
 
-  // Countdown timer — resets at midnight GMT+1
+  // ── Load slots ──────────────────────────────────────────────────────────────
+  const loadSlots = async () => {
+    if (!id) return;
+    const { data } = await supabase
+      .from("slots")
+      .select("*")
+      .eq("group_id", id)
+      .order("seat_number");
+    if (data) setDbSlots(data);
+    setLoadingSlots(false);
+  };
+
+  // ── Load chat messages ───────────────────────────────────────────────────────
+  const loadMessages = async () => {
+    if (!id) return;
+    const { data } = await supabase
+      .from("group_messages")
+      .select("*")
+      .eq("group_id", id)
+      .order("created_at")
+      .limit(100);
+    if (data) setMessages(data);
+  };
+
+  useEffect(() => {
+    if (id) {
+      loadSlots();
+      loadMessages();
+    }
+  }, [id]);
+
+  // ── Real-time chat subscription ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!id) return;
+    const channel = supabase
+      .channel(`group-chat-${id}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "group_messages", filter: `group_id=eq.${id}` },
+        (payload) => {
+          setMessages(prev => [...prev, payload.new as ChatMessage]);
+          setTimeout(() => chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" }), 50);
+        })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [id]);
+
+  // ── Countdown — resets at Nigerian midnight GMT+1 ──────────────────────────
   useEffect(() => {
     const tick = () => {
       const now = new Date();
@@ -88,10 +111,11 @@ export default function GroupDetail() {
       midnightGMT1.setUTCHours(23, 0, 0, 0);
       if (nowGMT1 > midnightGMT1) midnightGMT1.setUTCDate(midnightGMT1.getUTCDate() + 1);
       const diff = midnightGMT1.getTime() - nowGMT1.getTime();
-      const h = Math.floor(diff / 3600000);
-      const m = Math.floor((diff % 3600000) / 60000);
-      const s = Math.floor((diff % 60000) / 1000);
-      setCountdown({ h, m, s });
+      setCountdown({
+        h: Math.floor(diff / 3600000),
+        m: Math.floor((diff % 3600000) / 60000),
+        s: Math.floor((diff % 60000) / 1000),
+      });
     };
     tick();
     const iv = setInterval(tick, 1000);
@@ -100,33 +124,25 @@ export default function GroupDetail() {
 
   if (!group) return <Navigate to="/groups" replace />;
 
-  const handleSlotClick = (slotId: number, status: string) => {
-    if (!isLoggedIn) return;
-    if (status === "taken" || status === "locked" || status === "mine") return;
-    setSelectedSlot(slotId);
-    setShowTerms(true);
-  };
-
-  const confirmSlot = () => {
-    if (!selectedSlot) return;
-    setSlots(prev => prev.map(s => s.id === selectedSlot ? { ...s, status: "mine" as const, occupant: currentUser?.username } : s));
-    setShowTerms(false);
-  };
-
-  const sendMsg = () => {
-    if (!chatMsg.trim() || !currentUser) return;
-    const newMsg: ChatMessage = {
-      id: Date.now().toString(),
-      username: currentUser.username,
-      text: chatMsg,
-      time: new Date().toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" }),
-    };
-    setMessages(prev => [...prev, newMsg]);
-    setChatMsg("");
-    setTimeout(() => chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" }), 50);
-  };
-
   const pad = (n: number) => n.toString().padStart(2, "0");
+
+  // ── Build 100-seat grid from DB ──────────────────────────────────────────────
+  const buildGrid = () => {
+    return Array.from({ length: 100 }, (_, i) => {
+      const seatNo = i + 1;
+      const dbSlot = dbSlots.find(s => s.seat_number === seatNo);
+      if (!dbSlot) {
+        return { id: seatNo, status: "available" as const, occupant: null, dbId: null };
+      }
+      const isMine = dbSlot.user_id === currentUser?.id;
+      const isLocked = dbSlot.status === "locked" || (dbSlot.locked_until && new Date(dbSlot.locked_until) > new Date());
+      const isTaken = dbSlot.status === "taken" || (dbSlot.user_id && !isMine);
+      const status = isMine ? "mine" : isLocked ? "locked" : isTaken ? "taken" : "available";
+      return { id: seatNo, status, occupant: dbSlot.username, dbId: dbSlot.id };
+    });
+  };
+
+  const grid = buildGrid();
 
   const slotColorClass = (status: string) => {
     if (status === "available") return "bg-emerald-900/40 border border-emerald-500/50 text-emerald-400 cursor-pointer hover:bg-emerald-800/60 hover:border-emerald-400 hover:shadow-[0_0_10px_rgba(34,197,94,0.3)] transition-all";
@@ -136,8 +152,156 @@ export default function GroupDetail() {
     return "";
   };
 
-  // Members sorted by seat number
-  const sortedMembers = [...MOCK_PARTICIPANTS_SEATS].sort((a, b) => a.seatNo - b.seatNo);
+  const handleSlotClick = (seatNo: number, status: string) => {
+    if (!isLoggedIn) return;
+    if (status === "taken" || status === "locked" || status === "mine") return;
+    setSelectedSlot(seatNo);
+    setShowTerms(true);
+  };
+
+  // ── Confirm seat (real DB write) ─────────────────────────────────────────────
+  const confirmSlot = async () => {
+    if (!selectedSlot || !currentUser || !group) return;
+    setJoiningSlot(true);
+    try {
+      // Check if slot already taken (race condition)
+      const { data: existing } = await supabase
+        .from("slots")
+        .select("id,status,user_id")
+        .eq("group_id", group.id)
+        .eq("seat_number", selectedSlot)
+        .single();
+
+      if (existing && existing.status === "taken" && existing.user_id !== currentUser.id) {
+        alert("This seat was just taken! Please choose another.");
+        setShowTerms(false);
+        setJoiningSlot(false);
+        return;
+      }
+
+      const fullName = `${currentUser.firstName} ${currentUser.lastName}`.trim();
+
+      if (existing) {
+        await supabase.from("slots").update({
+          user_id: currentUser.id,
+          username: currentUser.username,
+          full_name: fullName,
+          status: "taken",
+          payment_status: "unpaid",
+          payment_time: paymentTime,
+          locked_until: null,
+        }).eq("id", existing.id);
+      } else {
+        await supabase.from("slots").insert({
+          group_id: group.id,
+          seat_number: selectedSlot,
+          user_id: currentUser.id,
+          username: currentUser.username,
+          full_name: fullName,
+          status: "taken",
+          payment_status: "unpaid",
+          payment_time: paymentTime,
+        });
+      }
+
+      // Update filled_slots count
+      const takenCount = dbSlots.filter(s => s.status === "taken" || s.user_id).length + 1;
+      await supabase.from("groups").update({ filled_slots: takenCount }).eq("id", group.id);
+
+      // Log audit
+      await supabase.from("audit_logs").insert({
+        action: `Joined group "${group.name}" - Seat #${selectedSlot}`,
+        performed_by: currentUser.id,
+        performed_by_username: currentUser.username,
+        target_user_id: currentUser.id,
+        target_username: currentUser.username,
+        type: "join",
+      });
+
+      await loadSlots();
+      setShowTerms(false);
+    } catch (e) {
+      console.error("Error joining slot:", e);
+    }
+    setJoiningSlot(false);
+  };
+
+  // ── Send chat message (real DB) ──────────────────────────────────────────────
+  const sendMsg = async () => {
+    if (!chatMsg.trim() || !currentUser || !group) return;
+    await supabase.from("group_messages").insert({
+      group_id: group.id,
+      user_id: currentUser.id,
+      username: currentUser.username,
+      message: chatMsg.trim(),
+      is_system: false,
+    });
+    setChatMsg("");
+  };
+
+  // ── Submit payment ───────────────────────────────────────────────────────────
+  const submitPayment = async () => {
+    if (!currentUser || !group) return;
+    const mySlots = dbSlots.filter(s => s.user_id === currentUser.id);
+    if (mySlots.length === 0) { setPaymentError("You haven't joined any seat in this group."); return; }
+    setSubmittingPayment(true);
+    setPaymentError("");
+    try {
+      let screenshotUrl: string | null = null;
+      if (payProof) {
+        const path = `${currentUser.id}/${group.id}/${Date.now()}-${payProof.name}`;
+        const { error: upErr } = await supabase.storage.from("payment-proofs").upload(path, payProof);
+        if (!upErr) {
+          const { data } = supabase.storage.from("payment-proofs").getPublicUrl(path);
+          screenshotUrl = data.publicUrl;
+        }
+      }
+      // Create a transaction per seat
+      for (const slot of mySlots) {
+        const code = `RAJ-${Date.now().toString().slice(-7)}`;
+        await supabase.from("transactions").insert({
+          user_id: currentUser.id,
+          username: currentUser.username,
+          group_id: group.id,
+          group_name: group.name,
+          seat_number: slot.seat_number,
+          amount: group.contributionAmount,
+          code,
+          screenshot_url: screenshotUrl,
+          status: "pending",
+        });
+        // Mark slot payment as pending
+        await supabase.from("slots").update({ payment_status: "pending" }).eq("id", slot.id);
+      }
+      await loadSlots();
+      setPayDone(true);
+    } catch (e) {
+      setPaymentError("Failed to submit payment. Please try again.");
+    }
+    setSubmittingPayment(false);
+  };
+
+  // ── Exit group request ───────────────────────────────────────────────────────
+  const submitExitRequest = async () => {
+    if (!currentUser || !group) return;
+    await supabase.from("exit_requests").insert({
+      user_id: currentUser.id,
+      username: currentUser.username,
+      group_id: group.id,
+      group_name: group.name,
+      reason: exitReason,
+      status: "pending",
+    });
+    setExitRequested(true);
+  };
+
+  // ── Members list: sorted by seat, name repeated per seat ──────────────────
+  const membersInGroup = dbSlots
+    .filter(s => s.user_id && (s.status === "taken" || s.status === "available"))
+    .filter(s => s.username)
+    .sort((a, b) => a.seat_number - b.seat_number);
+
+  const mySeats = dbSlots.filter(s => s.user_id === currentUser?.id);
 
   return (
     <div className="min-h-screen pt-16 pb-16 relative overflow-hidden">
@@ -149,67 +313,27 @@ export default function GroupDetail() {
         style={{ background: "rgba(5,5,5,0.85)", backdropFilter: "blur(24px)" }}
       >
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
-
           {/* HUGE TIMER */}
           <div className="flex items-center gap-3">
-            <div
-              className="flex items-baseline gap-0.5"
-              style={{
-                fontFamily: "'Cinzel', serif",
-                fontWeight: 900,
-                letterSpacing: "0.05em",
-              }}
-            >
-              {/* HH */}
-              <span
-                className="tabular-nums leading-none animate-countdown"
-                style={{
-                  fontSize: "clamp(3rem, 8vw, 5rem)",
-                  background: "linear-gradient(135deg, hsl(45,93%,47%), hsl(45,100%,70%))",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                  textShadow: "none",
-                  filter: "drop-shadow(0 0 18px rgba(234,179,8,0.5))",
-                }}
-              >
-                {pad(countdown.h)}
-              </span>
-              <span className="text-gold/50 font-black mx-0.5" style={{ fontSize: "clamp(2rem,5vw,3.5rem)" }}>:</span>
-              {/* MM */}
-              <span
-                className="tabular-nums leading-none animate-countdown"
-                style={{
-                  fontSize: "clamp(3rem, 8vw, 5rem)",
-                  background: "linear-gradient(135deg, hsl(45,93%,47%), hsl(45,100%,70%))",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                  filter: "drop-shadow(0 0 18px rgba(234,179,8,0.5))",
-                }}
-              >
-                {pad(countdown.m)}
-              </span>
-              <span className="text-gold/50 font-black mx-0.5" style={{ fontSize: "clamp(2rem,5vw,3.5rem)" }}>:</span>
-              {/* SS */}
-              <span
-                className="tabular-nums leading-none animate-countdown"
-                style={{
-                  fontSize: "clamp(3rem, 8vw, 5rem)",
-                  background: "linear-gradient(135deg, hsl(45,93%,47%), hsl(45,100%,70%))",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  backgroundClip: "text",
-                  filter: "drop-shadow(0 0 18px rgba(234,179,8,0.5))",
-                }}
-              >
-                {pad(countdown.s)}
-              </span>
+            <div className="flex items-baseline gap-0.5" style={{ fontFamily: "'Cinzel', serif", fontWeight: 900, letterSpacing: "0.05em" }}>
+              {[pad(countdown.h), pad(countdown.m), pad(countdown.s)].map((val, i) => (
+                <span key={i} style={{ display: "contents" }}>
+                  <span className="tabular-nums leading-none" style={{
+                    fontSize: "clamp(3rem, 8vw, 5rem)",
+                    background: "linear-gradient(135deg, hsl(45,93%,47%), hsl(45,100%,70%))",
+                    WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text",
+                    filter: "drop-shadow(0 0 18px rgba(234,179,8,0.5))",
+                  }}>{val}</span>
+                  {i < 2 && <span className="text-gold/50 font-black mx-0.5" style={{ fontSize: "clamp(2rem,5vw,3.5rem)" }}>:</span>}
+                </span>
+              ))}
             </div>
             <div className="flex flex-col gap-1 ml-1">
               <span className="text-muted-foreground text-[10px] font-bold tracking-widest uppercase">GMT+1</span>
               <span className="text-muted-foreground/50 text-[9px]">Daily Reset</span>
-              {group.isLive && <span className="live-badge text-[9px] px-2 py-0.5">● LIVE</span>}
+              {group.isLive
+                ? <span className="live-badge text-[9px] px-2 py-0.5">● LIVE</span>
+                : <span className="px-2 py-0.5 text-[9px] rounded-full border border-muted/20 text-muted-foreground">● WAITING</span>}
             </div>
           </div>
 
@@ -220,11 +344,8 @@ export default function GroupDetail() {
               <p className="gold-gradient-text font-cinzel font-bold text-sm">{group.name}</p>
               <p className="text-muted-foreground text-xs">₦{group.contributionAmount.toLocaleString()} / {group.cycleType}</p>
             </div>
-            <button className="p-2 rounded-lg border border-gold/15 bg-gold/5 hover:bg-gold/10 transition-all">
-              <Bell size={15} className="text-gold" />
-            </button>
             <div className="w-9 h-9 rounded-full bg-gold-gradient flex items-center justify-center text-obsidian font-black text-sm">
-              {currentUser?.firstName?.[0] || "R"}
+              {currentUser?.firstName?.[0] || "G"}
             </div>
           </div>
         </div>
@@ -236,8 +357,6 @@ export default function GroupDetail() {
 
           {/* ======= LEFT: SLOT GRID ======= */}
           <div className="xl:col-span-2 space-y-4">
-
-            {/* Group title bar */}
             <div className="glass-card-static rounded-xl px-5 py-3 flex items-center justify-between animate-fade-up">
               <div>
                 <div className="flex items-center gap-2 mb-1">
@@ -251,7 +370,6 @@ export default function GroupDetail() {
 
             {/* SLOT GRID */}
             <div className="glass-card-static rounded-2xl p-4 animate-fade-up delay-100">
-              {/* Legend */}
               <div className="flex flex-wrap gap-3 mb-4 text-[10px]">
                 {[
                   { cls: "bg-emerald-900/40 border border-emerald-500/50", label: "Available" },
@@ -266,84 +384,81 @@ export default function GroupDetail() {
                 ))}
               </div>
 
-              {/* Column headers (1-10) */}
-              <div className="flex gap-0.5 mb-0.5 ml-6">
-                {Array.from({ length: 10 }, (_, i) => (
-                  <div key={i} className="flex-1 text-center text-[8px] text-muted-foreground/40">{i + 1}</div>
-                ))}
-              </div>
-
-              {/* Row numbers + Grid */}
-              <div className="flex gap-0.5">
-                {/* Row numbers */}
-                <div className="flex flex-col gap-0.5">
-                  {Array.from({ length: 10 }, (_, i) => (
-                    <div key={i} className="w-5 h-8 flex items-center justify-end pr-1">
-                      <span className="text-muted-foreground/40 text-[8px]">{(i + 1) * 10 - 9}–{(i + 1) * 10}</span>
-                    </div>
-                  ))}
+              {loadingSlots ? (
+                <div className="flex items-center justify-center h-40">
+                  <div className="w-6 h-6 border-2 border-gold/30 border-t-gold rounded-full animate-spin" />
                 </div>
-
-                {/* 10x10 Grid */}
-                <div className="grid grid-cols-10 gap-0.5 flex-1">
-                  {slots.map(slot => (
-                    <button
-                      key={slot.id}
-                      onClick={() => handleSlotClick(slot.id, slot.status)}
-                      className={`h-8 rounded flex flex-col items-center justify-center transition-all relative group ${slotColorClass(slot.status)}`}
-                      title={`Seat ${slot.id}${slot.occupant ? ` — @${slot.occupant}` : ""} · ${slot.status}`}
-                    >
-                      {/* Seat number label */}
-                      <span className="text-[8px] font-bold leading-none">{slot.id}</span>
-                      {slot.status === "mine" && (
-                        <span className="text-[6px] leading-none opacity-80 mt-0.5">YOU</span>
-                      )}
-                      {/* Tooltip on hover */}
-                      {slot.occupant && (
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 rounded-lg bg-black/90 border border-gold/20 text-[9px] text-foreground whitespace-nowrap z-20 hidden group-hover:block pointer-events-none">
-                          @{slot.occupant}
+              ) : (
+                <>
+                  {/* Column headers */}
+                  <div className="flex gap-0.5 mb-0.5 ml-6">
+                    {Array.from({ length: 10 }, (_, i) => (
+                      <div key={i} className="flex-1 text-center text-[8px] text-muted-foreground/40">{i + 1}</div>
+                    ))}
+                  </div>
+                  {/* Row numbers + Grid */}
+                  <div className="flex gap-0.5">
+                    <div className="flex flex-col gap-0.5">
+                      {Array.from({ length: 10 }, (_, i) => (
+                        <div key={i} className="w-5 h-8 flex items-center justify-end pr-1">
+                          <span className="text-muted-foreground/40 text-[8px]">{(i + 1) * 10 - 9}–{(i + 1) * 10}</span>
                         </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
+                      ))}
+                    </div>
+                    <div className="grid grid-cols-10 gap-0.5 flex-1">
+                      {grid.map(slot => (
+                        <button
+                          key={slot.id}
+                          onClick={() => handleSlotClick(slot.id, slot.status)}
+                          className={`h-8 rounded flex flex-col items-center justify-center transition-all relative group ${slotColorClass(slot.status)}`}
+                          title={`Seat ${slot.id}${slot.occupant ? ` — @${slot.occupant}` : ""} · ${slot.status}`}
+                        >
+                          <span className="text-[8px] font-bold leading-none">{slot.id}</span>
+                          {slot.status === "mine" && <span className="text-[6px] leading-none opacity-80 mt-0.5">YOU</span>}
+                          {slot.occupant && (
+                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 rounded-lg bg-black/90 border border-gold/20 text-[9px] text-foreground whitespace-nowrap z-20 hidden group-hover:block pointer-events-none">
+                              @{slot.occupant}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
-              {/* Slot stats */}
+              {/* Stats */}
               <div className="mt-3 pt-3 border-t border-gold/10 flex flex-wrap gap-4 text-xs">
                 <span className="text-muted-foreground">Total: <span className="text-foreground font-bold">100</span></span>
-                <span className="text-muted-foreground">Taken: <span className="text-red-400 font-bold">{slots.filter(s => s.status === "taken").length}</span></span>
-                <span className="text-muted-foreground">Available: <span className="text-emerald-400 font-bold">{slots.filter(s => s.status === "available").length}</span></span>
-                <span className="text-muted-foreground">My Seats: <span className="text-gold font-bold">{slots.filter(s => s.status === "mine").length}</span></span>
+                <span className="text-muted-foreground">Taken: <span className="text-red-400 font-bold">{grid.filter(s => s.status === "taken").length}</span></span>
+                <span className="text-muted-foreground">Available: <span className="text-emerald-400 font-bold">{grid.filter(s => s.status === "available").length}</span></span>
+                <span className="text-muted-foreground">My Seats: <span className="text-gold font-bold">{grid.filter(s => s.status === "mine").length}</span></span>
               </div>
             </div>
 
-            {/* EXIT GROUP + PAYMENT PROOF ROW */}
+            {/* EXIT + PAYMENT ROW */}
             <div className="flex gap-3 animate-fade-up delay-200">
-              <button
-                onClick={() => setShowExitModal(true)}
-                className="shrink-0 px-4 py-3 rounded-xl text-sm font-bold border border-red-600/40 bg-red-900/20 text-red-400 hover:bg-red-900/35 transition-all flex items-center gap-2"
-              >
-                <LogOut size={14} /> Exit Group
-              </button>
+              {isLoggedIn && mySeats.length > 0 && (
+                <button onClick={() => setShowExitModal(true)}
+                  className="shrink-0 px-4 py-3 rounded-xl text-sm font-bold border border-red-600/40 bg-red-900/20 text-red-400 hover:bg-red-900/35 transition-all flex items-center gap-2">
+                  <LogOut size={14} /> Exit Group
+                </button>
+              )}
               <label className="flex-1 glass-card-static rounded-xl px-4 py-3 flex items-center justify-between cursor-pointer hover:border-gold/40 transition-all group">
                 <span className="text-muted-foreground text-sm group-hover:text-foreground transition-colors">
-                  {payProof ? "✅ Payment screenshot uploaded" : "Upload payment proof screenshot"}
+                  {payProof ? `✅ ${payProof.name}` : "Upload payment proof screenshot"}
                 </span>
                 <div className="p-2 rounded-lg bg-gold/10 border border-gold/20 group-hover:bg-gold/20 transition-all">
                   <Upload size={13} className="text-gold" />
                 </div>
-                <input type="file" accept="image/*" className="hidden" onChange={() => setPayProof(true)} />
+                <input type="file" accept="image/*" className="hidden" onChange={e => setPayProof(e.target.files?.[0] || null)} />
               </label>
             </div>
 
             {/* Make Payment */}
-            {isLoggedIn && !payDone && (
+            {isLoggedIn && !payDone && mySeats.length > 0 && (
               <div className="glass-card-static rounded-2xl p-5 animate-fade-up delay-200">
-                <button
-                  onClick={() => setShowPayment(!showPayment)}
-                  className="w-full flex items-center justify-between"
-                >
+                <button onClick={() => setShowPayment(!showPayment)} className="w-full flex items-center justify-between">
                   <h2 className="gold-text font-cinzel font-bold text-sm uppercase tracking-widest">Make Payment</h2>
                   <ChevronDown size={16} className={`text-gold transition-transform ${showPayment ? "rotate-180" : ""}`} />
                 </button>
@@ -356,24 +471,38 @@ export default function GroupDetail() {
                           ["Bank Name", group.bankName],
                           ["Account No", group.accountNumber],
                           ["Account Name", group.accountName],
-                          ["Amount", `₦${group.contributionAmount.toLocaleString()}`],
+                          ["Amount per Seat", `₦${group.contributionAmount.toLocaleString()}`],
+                          ["Total Seats", mySeats.length.toString()],
+                          ["Total Due", `₦${(group.contributionAmount * mySeats.length).toLocaleString()}`],
                         ].map(([label, val]) => (
                           <div key={label} className="flex justify-between">
                             <span className="text-muted-foreground">{label}:</span>
-                            <span className={label === "Amount" ? "text-gold font-bold" : "text-foreground font-semibold"}>{val}</span>
+                            <span className={label === "Total Due" ? "text-gold font-bold" : "text-foreground font-semibold"}>{val || "—"}</span>
                           </div>
                         ))}
                       </div>
                     </div>
-                    <div className="p-3 rounded-xl bg-amber-900/15 border border-amber-500/25 text-xs text-amber-400/80">
-                      ⚠️ Transfer externally then upload your screenshot above before clicking below.
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground uppercase tracking-widest">Your Seats</p>
+                      <div className="flex flex-wrap gap-2">
+                        {mySeats.map(s => (
+                          <span key={s.id} className={`px-2 py-0.5 rounded-full text-xs font-bold border ${
+                            s.payment_status === "paid" ? "text-emerald-400 border-emerald-600/30 bg-emerald-900/20" :
+                            s.payment_status === "pending" ? "text-amber-400 border-amber-600/30 bg-amber-900/20" :
+                            "text-gold border-gold/30 bg-gold/10"
+                          }`}>
+                            Seat #{s.seat_number} — {s.payment_status || "unpaid"}
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                    <button
-                      onClick={() => { if (payProof) setPayDone(true); }}
-                      className={`btn-gold w-full py-3 rounded-xl font-bold text-sm ${!payProof ? "opacity-40 cursor-not-allowed" : ""}`}
-                      disabled={!payProof}
-                    >
-                      I Have Made Payment
+                    {paymentError && <p className="text-red-400 text-xs">{paymentError}</p>}
+                    <div className="p-3 rounded-xl bg-amber-900/15 border border-amber-500/25 text-xs text-amber-400/80">
+                      ⚠️ Transfer the exact amount externally, upload your screenshot above, then click below.
+                    </div>
+                    <button onClick={submitPayment} disabled={submittingPayment || !payProof}
+                      className={`btn-gold w-full py-3 rounded-xl font-bold text-sm ${(!payProof || submittingPayment) ? "opacity-40 cursor-not-allowed" : ""}`}>
+                      {submittingPayment ? "Submitting..." : "I Have Made Payment"}
                     </button>
                   </div>
                 )}
@@ -384,6 +513,7 @@ export default function GroupDetail() {
                 <CheckCircle size={36} className="text-gold mx-auto mb-2 animate-glow-pulse" />
                 <h3 className="gold-text font-cinzel font-bold">Payment Submitted!</h3>
                 <p className="text-muted-foreground text-sm mt-1">Admin will verify your transaction. You'll be notified once approved.</p>
+                <button onClick={() => setPayDone(false)} className="btn-glass mt-3 px-4 py-2 rounded-xl text-xs font-semibold">Submit Another</button>
               </div>
             )}
           </div>
@@ -391,70 +521,64 @@ export default function GroupDetail() {
           {/* ======= RIGHT SIDEBAR ======= */}
           <div className="space-y-4">
 
-            {/* MEMBERS LIST — sorted by seat number */}
+            {/* MEMBERS LIST */}
             <div className="glass-card-static rounded-2xl overflow-hidden animate-fade-up delay-100">
-              <button
-                onClick={() => setShowParticipants(!showParticipants)}
-                className="w-full px-4 py-3 border-b border-gold/10 flex items-center justify-between hover:bg-gold/5 transition-colors"
-              >
+              <button onClick={() => setShowParticipants(!showParticipants)}
+                className="w-full px-4 py-3 border-b border-gold/10 flex items-center justify-between hover:bg-gold/5 transition-colors">
                 <div className="flex items-center gap-2">
                   <Users size={13} className="text-gold" />
                   <span className="gold-text font-cinzel font-bold text-xs uppercase tracking-wide">Members by Seat</span>
-                  <span className="text-muted-foreground/60 text-[10px]">({sortedMembers.length})</span>
+                  <span className="text-muted-foreground/60 text-[10px]">({membersInGroup.length})</span>
                 </div>
                 <ChevronDown size={14} className={`text-gold/60 transition-transform ${showParticipants ? "rotate-180" : ""}`} />
               </button>
 
               {showParticipants && (
                 <>
-                  {/* Column headers */}
                   <div className="px-3 py-2 grid grid-cols-12 gap-1 border-b border-gold/5 bg-gold/3">
                     <span className="col-span-2 text-[9px] text-muted-foreground/60 uppercase tracking-wider">Seat</span>
-                    <span className="col-span-5 text-[9px] text-muted-foreground/60 uppercase tracking-wider">Member</span>
-                    <span className="col-span-3 text-[9px] text-muted-foreground/60 uppercase tracking-wider">Username</span>
-                    <span className="col-span-2 text-[9px] text-muted-foreground/60 uppercase tracking-wider">Trust</span>
+                    <span className="col-span-6 text-[9px] text-muted-foreground/60 uppercase tracking-wider">Member</span>
+                    <span className="col-span-4 text-[9px] text-muted-foreground/60 uppercase tracking-wider">Status</span>
                   </div>
                   <div className="max-h-96 overflow-y-auto scrollbar-gold">
-                    {sortedMembers.map((p, i) => (
-                      <div
-                        key={`${p.seatNo}-${i}`}
-                        className={`px-3 py-2.5 grid grid-cols-12 gap-1 items-center border-b border-gold/5 transition-colors hover:bg-gold/5 ${
-                          p.username === currentUser?.username ? "bg-gold/8 border-l-2 border-l-gold" : ""
-                        }`}
-                      >
-                        {/* Seat # */}
-                        <div className="col-span-2">
-                          <span
-                            className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black"
-                            style={{
-                              background: p.username === currentUser?.username
-                                ? "rgba(234,179,8,0.25)"
-                                : "rgba(255,255,255,0.06)",
-                              border: p.username === currentUser?.username
-                                ? "1px solid rgba(234,179,8,0.5)"
-                                : "1px solid rgba(255,255,255,0.1)",
-                              color: p.username === currentUser?.username ? "hsl(45,93%,47%)" : "hsl(0,0%,70%)",
-                            }}
-                          >
-                            {p.seatNo}
-                          </span>
-                        </div>
-                        {/* Full name */}
-                        <div className="col-span-5 flex items-center gap-1.5 min-w-0">
-                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 bg-gold/15 text-gold">
-                            {p.fullName[0]}
+                    {membersInGroup.length === 0 ? (
+                      <p className="p-4 text-center text-muted-foreground text-xs">No members yet.</p>
+                    ) : (
+                      membersInGroup.map((s, i) => (
+                        <div key={`${s.id}-${i}`}
+                          className={`px-3 py-2.5 grid grid-cols-12 gap-1 items-center border-b border-gold/5 hover:bg-gold/5 transition-colors ${
+                            s.user_id === currentUser?.id ? "bg-gold/8 border-l-2 border-l-gold" : ""
+                          }`}>
+                          <div className="col-span-2">
+                            <span className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black"
+                              style={{
+                                background: s.user_id === currentUser?.id ? "rgba(234,179,8,0.25)" : "rgba(255,255,255,0.06)",
+                                border: s.user_id === currentUser?.id ? "1px solid rgba(234,179,8,0.5)" : "1px solid rgba(255,255,255,0.1)",
+                                color: s.user_id === currentUser?.id ? "hsl(45,93%,47%)" : "hsl(0,0%,70%)",
+                              }}>
+                              {s.seat_number}
+                            </span>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-foreground text-[10px] font-semibold truncate">{p.fullName}</p>
-                            {p.isVip && <span className="vip-badge text-[8px] px-1 py-0">VIP</span>}
+                          <div className="col-span-6 flex items-center gap-1.5 min-w-0">
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 bg-gold/15 text-gold">
+                              {(s.full_name || s.username || "?")[0].toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-foreground text-[10px] font-semibold truncate">{s.full_name || s.username}</p>
+                              <p className="text-muted-foreground text-[9px] truncate">@{s.username}</p>
+                            </div>
+                          </div>
+                          <div className="col-span-4">
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                              s.payment_status === "paid" ? "text-emerald-400 border-emerald-600/30 bg-emerald-900/15" :
+                              s.payment_status === "pending" ? "text-amber-400 border-amber-600/30 bg-amber-900/15" :
+                              s.payment_status === "defaulter" ? "text-red-400 border-red-600/30 bg-red-900/15" :
+                              "text-muted-foreground border-white/10 bg-white/5"
+                            }`}>{s.is_disbursed ? "✓ Paid" : (s.payment_status || "unpaid")}</span>
                           </div>
                         </div>
-                        {/* Username */}
-                        <span className="col-span-3 text-muted-foreground text-[9px] truncate">@{p.username}</span>
-                        {/* Trust */}
-                        <span className="col-span-2 text-emerald-400 text-[10px] font-bold">{p.trustScore}</span>
-                      </div>
-                    ))}
+                      ))
+                    )}
                   </div>
                 </>
               )}
@@ -462,10 +586,8 @@ export default function GroupDetail() {
 
             {/* GROUP CHAT */}
             <div className="glass-card-static rounded-2xl overflow-hidden animate-fade-up delay-200">
-              <button
-                onClick={() => setShowChat(!showChat)}
-                className="w-full px-4 py-3 border-b border-gold/10 flex items-center justify-between hover:bg-gold/5 transition-colors"
-              >
+              <button onClick={() => setShowChat(!showChat)}
+                className="w-full px-4 py-3 border-b border-gold/10 flex items-center justify-between hover:bg-gold/5 transition-colors">
                 <div className="flex items-center gap-2">
                   <span className="gold-text font-cinzel font-bold text-xs uppercase tracking-wide">Group Chat</span>
                   {group.chatLocked
@@ -484,19 +606,26 @@ export default function GroupDetail() {
                 ) : (
                   <>
                     <div ref={chatRef} className="p-3 h-52 overflow-y-auto scrollbar-gold space-y-2">
+                      {messages.length === 0 && (
+                        <p className="text-muted-foreground text-xs text-center py-4">No messages yet. Say hello!</p>
+                      )}
                       {messages.map(m => (
-                        <div key={m.id} className={`flex gap-2 ${m.username === currentUser?.username ? "flex-row-reverse" : ""}`}>
+                        <div key={m.id} className={`flex gap-2 ${m.user_id === currentUser?.id ? "flex-row-reverse" : ""}`}>
                           <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 text-[9px] font-bold bg-gold/20 text-gold">
                             {m.username[0].toUpperCase()}
                           </div>
-                          <div className={`max-w-[78%] flex flex-col ${m.username === currentUser?.username ? "items-end" : "items-start"}`}>
-                            <span className="text-muted-foreground text-[9px] mb-0.5">@{m.username} · {m.time}</span>
+                          <div className={`max-w-[78%] flex flex-col ${m.user_id === currentUser?.id ? "items-end" : "items-start"}`}>
+                            <span className="text-muted-foreground text-[9px] mb-0.5">
+                              @{m.username} · {new Date(m.created_at).toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
                             <div className={`px-3 py-2 rounded-xl text-[11px] leading-relaxed ${
-                              m.username === currentUser?.username
+                              m.user_id === currentUser?.id
                                 ? "bg-gold/15 border border-gold/20 text-foreground"
-                                : "bg-muted/30 text-foreground/80"
+                                : m.is_system
+                                  ? "bg-blue-900/20 border border-blue-600/20 text-blue-300 italic"
+                                  : "bg-muted/30 text-foreground/80"
                             }`}>
-                              {m.text}
+                              {m.message}
                             </div>
                           </div>
                         </div>
@@ -504,17 +633,10 @@ export default function GroupDetail() {
                     </div>
                     {isLoggedIn && (
                       <div className="p-3 border-t border-gold/10 flex gap-2">
-                        <input
-                          type="text"
-                          value={chatMsg}
-                          onChange={e => setChatMsg(e.target.value)}
+                        <input type="text" value={chatMsg} onChange={e => setChatMsg(e.target.value)}
                           onKeyDown={e => e.key === "Enter" && sendMsg()}
-                          placeholder="Type a message..."
-                          className="luxury-input text-xs py-2 flex-1"
-                        />
-                        <button onClick={sendMsg} className="btn-gold p-2 rounded-lg shrink-0">
-                          <Send size={13} />
-                        </button>
+                          placeholder="Type a message..." className="luxury-input text-xs py-2 flex-1" />
+                        <button onClick={sendMsg} className="btn-gold p-2 rounded-lg shrink-0"><Send size={13} /></button>
                       </div>
                     )}
                   </>
@@ -544,17 +666,15 @@ export default function GroupDetail() {
             </div>
             <div className="mb-4">
               <label className="luxury-label">Select Daily Payment Deadline</label>
-              <input
-                type="time"
-                value={paymentTime}
-                onChange={e => setPaymentTime(e.target.value)}
-                className="luxury-input"
-              />
-              <p className="text-amber-400/70 text-xs mt-2">⚠️ You cannot change this time. Only admin can edit it.</p>
+              <input type="time" value={paymentTime} onChange={e => setPaymentTime(e.target.value)} className="luxury-input" />
+              <p className="text-amber-400/70 text-xs mt-2">⚠️ You cannot change this time after confirming. Only admin can edit it.</p>
             </div>
             <div className="flex gap-3">
               <button onClick={() => setShowTerms(false)} className="btn-glass flex-1 py-2.5 rounded-xl text-sm font-semibold">Cancel</button>
-              <button onClick={confirmSlot} className="btn-gold flex-1 py-2.5 rounded-xl font-bold text-sm">I Agree & Confirm Seat #{selectedSlot}</button>
+              <button onClick={confirmSlot} disabled={joiningSlot}
+                className="btn-gold flex-1 py-2.5 rounded-xl font-bold text-sm disabled:opacity-60">
+                {joiningSlot ? "Joining..." : `Agree & Confirm Seat #${selectedSlot}`}
+              </button>
             </div>
           </div>
         </div>
@@ -571,18 +691,17 @@ export default function GroupDetail() {
             {!exitRequested ? (
               <>
                 <p className="text-muted-foreground text-sm leading-relaxed mb-4">
-                  You cannot leave instantly. Your request will be reviewed by admin who may approve or reject it.
+                  You cannot leave instantly. Your exit request will be reviewed by admin who may approve or reject it.
                 </p>
                 <div className="mb-4">
                   <label className="luxury-label">Reason for leaving</label>
-                  <textarea rows={3} className="luxury-input resize-none" placeholder="Enter your reason..." />
+                  <textarea rows={3} value={exitReason} onChange={e => setExitReason(e.target.value)}
+                    className="luxury-input resize-none" placeholder="Enter your reason..." />
                 </div>
                 <div className="flex gap-3">
                   <button onClick={() => setShowExitModal(false)} className="btn-glass flex-1 py-2.5 rounded-xl text-sm">Cancel</button>
-                  <button
-                    onClick={() => setExitRequested(true)}
-                    className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-red-900/40 border border-red-600/50 text-red-400 hover:bg-red-900/60 transition-all"
-                  >
+                  <button onClick={submitExitRequest}
+                    className="flex-1 py-2.5 rounded-xl font-bold text-sm bg-red-900/40 border border-red-600/50 text-red-400 hover:bg-red-900/60 transition-all">
                     Submit Request
                   </button>
                 </div>
@@ -591,8 +710,9 @@ export default function GroupDetail() {
               <div className="text-center py-4">
                 <CheckCircle size={36} className="text-gold mx-auto mb-3" />
                 <h4 className="gold-text font-cinzel font-bold">Request Submitted</h4>
-                <p className="text-muted-foreground text-sm mt-2">Admin will review your exit request and notify you of the decision.</p>
-                <button onClick={() => setShowExitModal(false)} className="btn-glass mt-4 px-6 py-2 rounded-xl text-sm font-semibold">Close</button>
+                <p className="text-muted-foreground text-sm mt-2">Admin will review and notify you of the decision.</p>
+                <button onClick={() => { setShowExitModal(false); setExitRequested(false); }}
+                  className="btn-glass mt-4 px-6 py-2 rounded-xl text-sm font-semibold">Close</button>
               </div>
             )}
           </div>

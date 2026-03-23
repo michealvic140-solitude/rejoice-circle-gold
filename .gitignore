@@ -12,12 +12,6 @@ dist
 dist-ssr
 *.local
 
-# Lock files (let each dev regenerate based on package.json)
-pnpm-lock.yaml
-package-lock.json
-yarn.lock
-bun.lock
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

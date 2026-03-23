@@ -8,13 +8,11 @@ export default {
     container: {
       center: true,
       padding: "2rem",
-      screens: { "2xl": "1400px" },
+      screens: {
+        "2xl": "1400px",
+      },
     },
     extend: {
-      fontFamily: {
-        cinzel: ["'Cinzel'", "serif"],
-        inter: ["'Inter'", "sans-serif"],
-      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -49,12 +47,6 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        gold: {
-          DEFAULT: "hsl(var(--gold))",
-          dim: "hsl(var(--gold-dim))",
-          glow: "hsl(var(--gold-glow))",
-        },
-        obsidian: "#0a0a0a",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
@@ -71,41 +63,27 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
-      backgroundImage: {
-        "gold-gradient": "linear-gradient(135deg, hsl(45, 93%, 47%), hsl(38, 92%, 42%))",
-        "gold-shine": "linear-gradient(90deg, transparent, rgba(234,179,8,0.4), transparent)",
-        "glass-gradient": "linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02))",
-        "hero-glow": "radial-gradient(ellipse at center, rgba(234,179,8,0.08) 0%, transparent 70%)",
-      },
       keyframes: {
         "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
+          from: {
+            height: "0",
+          },
+          to: {
+            height: "var(--radix-accordion-content-height)",
+          },
         },
         "accordion-up": {
-          from: { height: "var(--radix-accordion-content-height)" },
-          to: { height: "0" },
-        },
-        "glow-pulse": {
-          "0%, 100%": { boxShadow: "0 0 10px rgba(234, 179, 8, 0.2)" },
-          "50%": { boxShadow: "0 0 30px rgba(234, 179, 8, 0.5), 0 0 60px rgba(234, 179, 8, 0.2)" },
-        },
-        "float-up": {
-          "0%": { transform: "translateY(0px)", opacity: "0.6" },
-          "50%": { transform: "translateY(-8px)", opacity: "1" },
-          "100%": { transform: "translateY(0px)", opacity: "0.6" },
-        },
-        "shimmer": {
-          "0%": { backgroundPosition: "-200% center" },
-          "100%": { backgroundPosition: "200% center" },
+          from: {
+            height: "var(--radix-accordion-content-height)",
+          },
+          to: {
+            height: "0",
+          },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "glow-pulse": "glow-pulse 2s ease infinite",
-        "float-up": "float-up 3s ease-in-out infinite",
-        "shimmer": "shimmer 2s linear infinite",
       },
     },
   },
